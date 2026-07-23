@@ -1,0 +1,18 @@
+{
+  "event_id": "evt-product-003",
+  "event_type": "ProductDeleted",
+  "occurred_at": "2026-07-07T09:10:00Z",
+  "data": {
+    "product_id": 1,
+    "title": "Lenovo IdeaPad Slim 5",
+    "category_id": 10,
+    "category_name": "laptop",
+    "brand": "Lenovo",
+    "original_price": 18990000,
+    "discounted_price": 16990000,
+    "discount_percent": 10,
+    "description": "Laptop da bi an khoi catalog",
+    "image_url": "https://example.com/images/laptop-001.jpg",
+    "is_active": false
+  }
+}

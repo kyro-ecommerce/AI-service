@@ -1,0 +1,26 @@
+{
+  "event_id": "evt-product-002",
+  "event_type": "ProductUpdated",
+  "occurred_at": "2026-07-07T09:05:00Z",
+  "data": {
+    "product_id": 1,
+    "title": "Lenovo IdeaPad Slim 5",
+    "category_id": 10,
+    "category_name": "laptop",
+    "brand": "Lenovo",
+    "original_price": 18990000,
+    "discounted_price": 16990000,
+    "discount_percent": 10,
+    "average_rating": 4.8,
+    "num_ratings": 40,
+    "quantity_sold": 145,
+    "seller_id": 5,
+    "description": "Laptop mong nhe cho sinh vien, van phong va lap trinh co ban",
+    "ram_capacity": "16GB",
+    "rom_capacity": "512GB",
+    "screen_size": "14 inch",
+    "tags": ["student", "programming", "office", "discount"],
+    "image_url": "https://example.com/images/laptop-001.jpg",
+    "is_active": true
+  }
+}
