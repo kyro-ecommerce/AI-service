@@ -40,32 +40,42 @@ def recommend_similar_products(
     target_text = build_content_text(target_product)
     target_vector = generate_embedding(target_text)
 
-    scored_items: list[tuple[float, Product, str]] = []
-
     target_cat = normalize_text(target_product.category_name or "")
     target_brand = normalize_text(target_product.brand or "")
+    target_keywords = set(normalize_text(target_product.title or "").split())
 
-    for candidate in products:
-        if candidate.product_id == target_product_id or not candidate.is_active:
-            continue
+    # Phase 1: Try filtering by same category
+    same_cat_candidates = [
+        c for c in products
+        if c.product_id != target_product_id and c.is_active and normalize_text(c.category_name or "") == target_cat
+    ]
 
+    # If same category produces candidates, use them; otherwise use all active candidates
+    candidates = same_cat_candidates if len(same_cat_candidates) > 0 else [
+        c for c in products if c.product_id != target_product_id and c.is_active
+    ]
+
+    scored_items: list[tuple[float, Product, str]] = []
+
+    for candidate in candidates:
         cand_cat = normalize_text(candidate.category_name or "")
         cand_brand = normalize_text(candidate.brand or "")
-
-        # Strict Same Category Filter for Similar Products
-        if cand_cat != target_cat:
-            continue
+        cand_keywords = set(normalize_text(candidate.title or "").split())
 
         candidate_text = build_content_text(candidate)
         candidate_vector = generate_embedding(candidate_text)
         sim_score = calculate_cosine_similarity(target_vector, candidate_vector)
 
-        brand_boost = 0.1 if cand_brand == target_brand else 0.0
-        total_score = sim_score + brand_boost
+        # Boost score if brands or title keywords match (e.g. "Tai nghe")
+        brand_boost = 0.15 if cand_brand and cand_brand == target_brand else 0.0
+        keyword_overlap = len(target_keywords.intersection(cand_keywords)) * 0.15
+        total_score = sim_score + brand_boost + keyword_overlap
 
-        reason = f"Sản phẩm {target_product.category_name or ''} cùng phân khúc và tính năng tương đồng"
-        if cand_brand == target_brand:
-            reason = f"Cùng thương hiệu {target_product.brand} và danh mục {target_product.category_name}"
+        reason = "Sản phẩm có tính năng và phân khúc tương đồng"
+        if cand_brand and cand_brand == target_brand:
+            reason = f"Cùng thương hiệu {target_product.brand}"
+        elif keyword_overlap > 0:
+            reason = f"Sản phẩm tương tự {target_product.title}"
 
         scored_items.append((total_score, candidate, reason))
 
@@ -80,6 +90,7 @@ def recommend_similar_products(
             brand=product.brand,
             original_price=product.original_price,
             discounted_price=product.discounted_price,
+            discount_percent=product.discount_percent,
             average_rating=product.average_rating,
             image_url=product.image_url,
             similarity_score=round(score, 2),
@@ -91,7 +102,7 @@ def recommend_similar_products(
     return RecommendationResponse(
         target_product_id=target_product.product_id,
         target_product_title=target_product.title,
-        strategy="strict_category_vector_similarity",
+        strategy="hybrid_vector_keyword_similarity",
         recommendations=recommendations,
     )
 

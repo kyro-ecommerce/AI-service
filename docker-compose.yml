@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ai_service
     ports:
-      - "5432:5432"
+      - "5433:5432"   # Changed from 5432 to avoid conflict with kyro_backend compose
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,8 +22,8 @@ services:
     container_name: ai_rabbitmq
     restart: always
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "5673:5672"    # Changed from 5672 to avoid conflict with kyro_backend compose
+      - "15673:15672"  # Changed from 15672 to avoid conflict with kyro_backend compose
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -59,7 +59,7 @@ services:
     container_name: ai_db_adminer
     restart: always
     ports:
-      - "8080:8080"
+      - "8090:8080"  # Changed from 8080 to avoid conflict with api-gateway
     depends_on:
       - db
 

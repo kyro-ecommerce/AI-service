@@ -71,3 +71,17 @@ def get_accessory_recommendations(
     return response
 
 
+@router.get("/recommendations/complementary/{product_id}", response_model=RecommendationResponse)
+def get_complementary_recommendations(
+    product_id: int,
+    limit: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> RecommendationResponse:
+    """Alias for /accessories — compatible with Frontend ai.service.js which calls /complementary."""
+    products, _ = list_active_products_safe(db)
+    response = recommend_accessories(products=products, target_product_id=product_id, limit=limit)
+
+    if not response:
+        raise HTTPException(status_code=404, detail=f"Product with ID {product_id} not found")
+
+    return response

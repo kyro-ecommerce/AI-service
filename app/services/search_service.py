@@ -87,6 +87,23 @@ def extract_primary_category_intents(raw_query: str) -> set[str]:
     return intents
 
 
+def extract_budget_constraint(raw_query: str) -> float | None:
+    norm_q = normalize_text(raw_query)
+    match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:trieu|tr|m)\b", norm_q)
+    if match:
+        try:
+            return float(match.group(1).replace(",", ".")) * 1_000_000
+        except ValueError:
+            pass
+    match_digits = re.search(r"\b(\d{7,9})\b", norm_q)
+    if match_digits:
+        try:
+            return float(match_digits.group(1))
+        except ValueError:
+            pass
+    return None
+
+
 def calculate_keyword_score(
     product: Product,
     query_tokens: list[str],
@@ -99,12 +116,23 @@ def calculate_keyword_score(
     norm_cat = normalize_parts([product.category_name or ""])
     norm_tags = normalize_parts(build_tags(product))
 
-    # 1. Multi-Category Intent Enforcement (e.g. "chuột và bàn phím" matches both mouse and keyboard)
+    # Budget-aware scoring
+    budget_max = extract_budget_constraint(raw_query)
+    if budget_max and budget_max > 0:
+        eff_price = product.discounted_price or product.original_price or 0.0
+        if eff_price > 0:
+            if eff_price <= budget_max:
+                score += 40.0
+            elif eff_price <= budget_max * 1.2:
+                score += 15.0
+            else:
+                score -= 30.0
+
+    # 1. Multi-Category Intent Enforcement
     if primary_intents:
         if norm_cat in primary_intents or any(intent in norm_title or intent in norm_tags for intent in primary_intents):
             score += 35.0
         else:
-            # Mismatched category penalty
             score -= 50.0
 
     # 2. Exact phrase matching boost (e.g. "tai nghe" matching title, category, or tags)

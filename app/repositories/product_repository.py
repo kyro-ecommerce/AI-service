@@ -15,7 +15,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PRODUCTS_FILE = PROJECT_ROOT / "data" / "products.json"
 
 
-def to_product_summary(product: AIProduct | Product) -> ProductSummary:
+def to_product_summary(product: AIProduct | Product | dict) -> ProductSummary:
+    if isinstance(product, dict):
+        return ProductSummary(
+            product_id=product.get("product_id") or product.get("id"),
+            title=product.get("title") or product.get("name", ""),
+            category_id=product.get("category_id"),
+            category_name=product.get("category_name") or product.get("category"),
+            brand=product.get("brand"),
+            original_price=product.get("original_price") or product.get("price"),
+            discounted_price=product.get("discounted_price"),
+            discount_percent=product.get("discount_percent"),
+            average_rating=product.get("average_rating", 0.0),
+            image_url=product.get("image_url"),
+            is_active=product.get("is_active", True),
+        )
     return ProductSummary(
         product_id=product.product_id,
         title=product.title,
@@ -148,7 +162,7 @@ def list_active_product_summaries(
         return [to_product_summary(product) for product in products], total or 0
     except Exception as exc:
         logger.warning("DB unavailable for summaries (%s). Falling back to dataset.", exc)
-        safe_products = list_active_products_safe(db=None)
+        safe_products, _ = list_active_products_safe(db=None)
         total = len(safe_products)
         start = (page - 1) * size
         end = start + size
