@@ -28,6 +28,9 @@ COMPLEMENTARY_CATEGORIES = {
 }
 
 
+from app.services.recommendation.caching import get_cached_recommendation
+
+
 def find_product_by_id(products: list[Product], product_id: int) -> Product | None:
     for product in products:
         if product.product_id == product_id:
@@ -40,28 +43,25 @@ def recommend_similar_products(
     target_product_id: int,
     limit: int = 5,
 ) -> RecommendationResponse | None:
-    """Two-Stage Recommendation Pipeline for Similar Products.
+    """Two-Stage Recommendation Pipeline for Similar Products with Cache."""
+    cache_key = f"rec_similar:{target_product_id}:{limit}"
 
-    Stage 1: Candidate Generation (Retrieval)
-    Stage 2: Multi-Objective Re-ranking
-    """
-    target_product = find_product_by_id(products, target_product_id)
-    if not target_product:
-        return None
+    def _compute():
+        target_product = find_product_by_id(products, target_product_id)
+        if not target_product:
+            return None
+        candidates = retrieve_candidates_for_similar(
+            products=products,
+            target_product=target_product,
+            limit=50,
+        )
+        return rerank_similar_candidates(
+            target_product=target_product,
+            candidates=candidates,
+            limit=limit,
+        )
 
-    # Stage 1: Retrieval
-    candidates = retrieve_candidates_for_similar(
-        products=products,
-        target_product=target_product,
-        limit=50,
-    )
-
-    # Stage 2: Re-ranking
-    return rerank_similar_candidates(
-        target_product=target_product,
-        candidates=candidates,
-        limit=limit,
-    )
+    return get_cached_recommendation(cache_key, _compute)
 
 
 def recommend_accessories(
@@ -69,47 +69,51 @@ def recommend_accessories(
     target_product_id: int,
     limit: int = 5,
 ) -> RecommendationResponse | None:
-    """Two-Stage Recommendation Pipeline for Accessory / Complementary Products.
+    """Two-Stage Recommendation Pipeline for Accessory / Complementary Products with Cache."""
+    cache_key = f"rec_acc:{target_product_id}:{limit}"
 
-    Stage 1: Cross-Category Candidate Retrieval
-    Stage 2: Synergy & Rating Re-ranking
-    """
-    target_product = find_product_by_id(products, target_product_id)
-    if not target_product:
-        return None
+    def _compute():
+        target_product = find_product_by_id(products, target_product_id)
+        if not target_product:
+            return None
 
-    target_cat = normalize_text(target_product.category_name or "")
-    allowed_accessory_cats = COMPLEMENTARY_CATEGORIES.get(
-        target_cat, ["headphone", "mouse", "keyboard"]
-    )
+        target_cat = normalize_text(target_product.category_name or "")
+        allowed_accessory_cats = COMPLEMENTARY_CATEGORIES.get(
+            target_cat, ["headphone", "mouse", "keyboard"]
+        )
 
-    # Stage 1: Retrieval
-    candidates = retrieve_candidates_for_accessories(
-        products=products,
-        target_product=target_product,
-        allowed_categories=allowed_accessory_cats,
-        limit=50,
-    )
+        candidates = retrieve_candidates_for_accessories(
+            products=products,
+            target_product=target_product,
+            allowed_categories=allowed_accessory_cats,
+            limit=50,
+        )
 
-    # Stage 2: Re-ranking
-    return rerank_accessory_candidates(
-        target_product=target_product,
-        candidates=candidates,
-        limit=limit,
-    )
+        return rerank_accessory_candidates(
+            target_product=target_product,
+            candidates=candidates,
+            limit=limit,
+        )
+
+    return get_cached_recommendation(cache_key, _compute)
 
 
 def recommend_trending_products(
     products: list[Product],
     limit: int = 5,
 ) -> RecommendationResponse:
-    """Two-Stage Recommendation Pipeline for Cold-Start / Best Sellers.
+    """Two-Stage Recommendation Pipeline for Cold-Start / Best Sellers with Cache."""
+    cache_key = f"rec_trending:{limit}"
 
-    Stage 1: Active Product Candidate Retrieval
-    Stage 2: Best-Seller & Rating Logarithmic Ranker
-    """
-    candidates = retrieve_candidates_for_trending(products=products, limit=50)
-    return rerank_trending_candidates(candidates=candidates, limit=limit)
+    def _compute():
+        candidates = retrieve_candidates_for_trending(products=products, limit=50)
+        return rerank_trending_candidates(candidates=candidates, limit=limit)
+
+    res = get_cached_recommendation(cache_key, _compute)
+    if res is None:
+        candidates = retrieve_candidates_for_trending(products=products, limit=50)
+        return rerank_trending_candidates(candidates=candidates, limit=limit)
+    return res
 
 
 def recommend_personalized_products(
@@ -118,11 +122,7 @@ def recommend_personalized_products(
     limit: int = 5,
     db: Session | None = None,
 ) -> RecommendationResponse:
-    """Two-Stage Adaptive Personalized Recommendation Pipeline based on recent interaction history & Collaborative Filtering.
-
-    Stage 1: Candidate Generation
-    Stage 2: Implicit Collaborative Filtering & Intent-Matched Adaptive Re-ranking
-    """
+    """Two-Stage Adaptive Personalized Recommendation Pipeline based on recent interaction history & Collaborative Filtering."""
     from app.repositories.user_interaction_repository import get_user_recent_intents
     from app.services.recommendation.collaborative import compute_user_collaborative_scores
 
@@ -138,4 +138,5 @@ def recommend_personalized_products(
         cf_scores=cf_scores,
         limit=limit,
     )
+
 
