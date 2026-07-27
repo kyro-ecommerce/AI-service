@@ -154,6 +154,12 @@ python -c "import sys; sys.path.insert(0, '.'); import unittest; loader = unitte
 python scripts/evaluate_recsys.py
 ```
 
+### 5. Run Offline Batch Training Pipeline (Feature Store Export)
+```powershell
+python scripts/train_batch_collaborative.py
+```
+
+
 ---
 
 ## 🔌 API Reference & Payload Examples

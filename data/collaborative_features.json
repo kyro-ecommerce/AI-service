@@ -1,0 +1,67 @@
+{
+  "metadata": {
+    "trained_at": "2026-07-27T07:39:04.213495+00:00",
+    "model_version": "2.0-batch-svd",
+    "total_users_trained": 19,
+    "decay_half_life_days": 7.0
+  },
+  "user_features": {
+    "101": {
+      "mouse": 1.0
+    },
+    "102": {
+      "headphone": 1.0
+    },
+    "103": {
+      "monitor": 1.0
+    },
+    "104": {
+      "keyboard": 1.0
+    },
+    "105": {
+      "laptop": 1.0
+    },
+    "106": {
+      "mouse": 1.0
+    },
+    "107": {
+      "headphone": 1.0
+    },
+    "108": {
+      "monitor": 1.0
+    },
+    "109": {
+      "keyboard": 1.0
+    },
+    "110": {
+      "laptop": 1.0
+    },
+    "111": {
+      "mouse": 1.0
+    },
+    "112": {
+      "headphone": 1.0
+    },
+    "113": {
+      "monitor": 1.0
+    },
+    "114": {
+      "keyboard": 1.0
+    },
+    "115": {
+      "laptop": 1.0
+    },
+    "116": {
+      "mouse": 1.0
+    },
+    "117": {
+      "headphone": 1.0
+    },
+    "118": {
+      "monitor": 1.0
+    },
+    "119": {
+      "keyboard": 1.0
+    }
+  }
+}

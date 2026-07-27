@@ -1,3 +1,5 @@
+import os
+import json
 import math
 import logging
 from datetime import datetime, timedelta, timezone
@@ -7,6 +9,10 @@ from app.schemas.product import Product
 from app.services.search_service import normalize_text
 
 logger = logging.getLogger("ai-service.recommendation.collaborative")
+
+FEATURE_STORE_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "collaborative_features.json")
+)
 
 # Implicit Interaction Weights for E-commerce actions
 INTERACTION_WEIGHTS = {
@@ -22,12 +28,7 @@ CHAT_TTL_DAYS = 3.0  # Chatbot interactions strictly expire after 3 days
 
 
 def calculate_time_decay(created_at: datetime | None, now: datetime | None = None) -> float:
-    """Calculate exponential time-decay weight: e^(-lambda * delta_t_days).
-
-    - Current interaction (0 days ago) -> 1.0
-    - 7 days ago -> 0.5
-    - 14 days ago -> 0.25
-    """
+    """Calculate exponential time-decay weight: e^(-lambda * delta_t_days)."""
     if not created_at:
         return 1.0
 
@@ -38,8 +39,23 @@ def calculate_time_decay(created_at: datetime | None, now: datetime | None = Non
         created_at = created_at.replace(tzinfo=timezone.utc)
 
     delta_days = max(0.0, (now - created_at).total_seconds() / 86400.0)
-    decay_factor = math.exp(- (math.log(2) / HALF_LIFE_DAYS) * delta_days)
+    decay_factor = math.exp(-(math.log(2) / HALF_LIFE_DAYS) * delta_days)
     return max(0.01, decay_factor)
+
+
+def load_batch_feature_store(user_id: int) -> dict[str, float] | None:
+    """Load pre-computed user latent affinity features from Feature Store if available (< 1ms)."""
+    if not os.path.exists(FEATURE_STORE_PATH):
+        return None
+
+    try:
+        with open(FEATURE_STORE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            user_features = data.get("user_features", {})
+            return user_features.get(str(user_id))
+    except Exception as exc:
+        logger.debug("Feature Store read error: %s", exc)
+        return None
 
 
 def compute_user_collaborative_scores(
@@ -49,10 +65,32 @@ def compute_user_collaborative_scores(
 ) -> dict[int, float]:
     """Compute Implicit Collaborative Filtering scores for products given a user's interaction history.
 
-    Uses TruncatedSVD Matrix Factorization from scikit-learn when user history is present.
+    First checks pre-computed Feature Store for < 1ms response, then gracefully falls back to real-time SVD.
     Returns mapping product_id -> score in range [0.0, 1.0].
     """
-    if not user_id or user_id <= 0 or not db:
+    if not user_id or user_id <= 0:
+        return {}
+
+    # Option A: Fast Feature Store Lookup (< 1ms)
+    precomputed_cat_scores = load_batch_feature_store(user_id)
+    if precomputed_cat_scores is not None:
+        product_cf_scores: dict[int, float] = {}
+        for p in products:
+            p_cat = normalize_text(p.category_name or "")
+            p_title = normalize_text(p.title)
+
+            matched_score = 0.0
+            for intent, cat_score in precomputed_cat_scores.items():
+                if intent == p_cat or intent in p_title:
+                    matched_score = max(matched_score, cat_score)
+
+            if matched_score > 0.0:
+                product_cf_scores[p.product_id] = round(matched_score, 4)
+
+        return product_cf_scores
+
+    # Option B: Real-time Fallback if Feature Store file is not present
+    if not db:
         return {}
 
     try:
@@ -62,7 +100,6 @@ def compute_user_collaborative_scores(
         if not recent_intents:
             return {}
 
-        # Fetch records for interaction matrix building
         from sqlalchemy import select
         from app.db.models import UserInteraction
 
@@ -80,7 +117,6 @@ def compute_user_collaborative_scores(
         category_weights: dict[str, float] = {}
 
         for rec in records:
-            # Enforce 3-day Chatbot TTL rule
             if rec.interaction_type == "CHAT" and rec.created_at:
                 created = rec.created_at
                 if created.tzinfo is None:
@@ -103,19 +139,16 @@ def compute_user_collaborative_scores(
         if not category_weights:
             return {}
 
-        # Matrix Factorization via TruncatedSVD when numpy & sklearn are available
         try:
             import numpy as np
             from sklearn.decomposition import TruncatedSVD
 
-            # Construct Category x User Interaction Matrix
             categories = list(category_weights.keys())
             weights = np.array([category_weights[c] for c in categories], dtype=np.float32)
 
             if len(categories) > 1:
                 n_components = min(len(categories) - 1, 4)
                 svd = TruncatedSVD(n_components=n_components, random_state=42)
-                # Matrix representation with dummy user columns to allow SVD factorization
                 dummy_matrix = np.diag(weights)
                 svd.fit(dummy_matrix)
                 transformed = svd.transform(dummy_matrix).sum(axis=1)
@@ -132,7 +165,6 @@ def compute_user_collaborative_scores(
             max_w = max(category_weights.values()) if category_weights else 1.0
             cat_score_map = {cat: w / max_w for cat, w in category_weights.items()}
 
-        # Map category scores to individual candidate products
         product_cf_scores: dict[int, float] = {}
         for p in products:
             p_cat = normalize_text(p.category_name or "")
