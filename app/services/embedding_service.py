@@ -12,6 +12,9 @@ def get_embedding_model() -> Any:
     global _model
     if _model is None:
         try:
+            import os
+            os.environ["USE_TF"] = "0"
+            os.environ["USE_TORCH"] = "1"
             from sentence_transformers import SentenceTransformer
 
             logger.info("Loading sentence-transformer model: %s", MODEL_NAME)

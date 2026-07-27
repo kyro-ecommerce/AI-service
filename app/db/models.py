@@ -1,6 +1,10 @@
 from datetime import datetime
 
-from pgvector.sqlalchemy import Vector
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    from sqlalchemy import String as Vector
+
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
