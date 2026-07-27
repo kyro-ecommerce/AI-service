@@ -118,19 +118,24 @@ def recommend_personalized_products(
     limit: int = 5,
     db: Session | None = None,
 ) -> RecommendationResponse:
-    """Two-Stage Adaptive Personalized Recommendation Pipeline based on recent interaction history.
+    """Two-Stage Adaptive Personalized Recommendation Pipeline based on recent interaction history & Collaborative Filtering.
 
     Stage 1: Candidate Generation
-    Stage 2: Intent-Matched Adaptive Re-ranking
+    Stage 2: Implicit Collaborative Filtering & Intent-Matched Adaptive Re-ranking
     """
     from app.repositories.user_interaction_repository import get_user_recent_intents
+    from app.services.recommendation.collaborative import compute_user_collaborative_scores
 
     user_intents = get_user_recent_intents(db, user_id)
+    cf_scores = compute_user_collaborative_scores(user_id=user_id, products=products, db=db)
+
     candidates = retrieve_candidates_for_personalized(products=products, limit=50)
 
     return rerank_personalized_candidates(
         user_id=user_id,
         candidates=candidates,
         user_intents=user_intents,
+        cf_scores=cf_scores,
         limit=limit,
     )
+

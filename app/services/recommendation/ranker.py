@@ -167,15 +167,17 @@ def rerank_personalized_candidates(
     candidates: list[Product],
     user_intents: set[str],
     limit: int = 5,
+    cf_scores: dict[int, float] | None = None,
 ) -> RecommendationResponse:
-    """Stage 2 Adaptive Personalized Re-ranker based on interaction history."""
-    if not user_intents:
+    """Stage 2 Adaptive Personalized Re-ranker based on interaction history & Implicit Collaborative Filtering."""
+    if not user_intents and not cf_scores:
         res = rerank_trending_candidates(candidates=candidates, limit=limit)
         res.target_product_id = user_id
         res.target_product_title = f"Cá nhân hóa cho User ID {user_id}"
         res.strategy = "cold_start_fallback_no_history"
         return res
 
+    cf_map = cf_scores or {}
     scored_items: list[tuple[float, Product, str]] = []
 
     for product in candidates:
@@ -189,9 +191,20 @@ def rerank_personalized_candidates(
         matched_intent = any(
             intent == cand_cat or intent in cand_title for intent in user_intents
         )
+        cf_score = cf_map.get(product.product_id, 0.0)
 
-        if matched_intent:
-            total_score = base_score * 1.35
+        # Multi-Objective Scoring: Popularity + Collaborative Filtering Boost + Intent Recency Multiplier
+        cf_boost = cf_score * 4.0
+        score_before_multiplier = base_score + cf_boost
+
+        if cf_score > 0.0 and matched_intent:
+            total_score = score_before_multiplier * 1.40
+            reason = f"Gợi ý cá nhân hóa cao từ mô hình lọc cộng tác & quan tâm {product.category_name or 'sản phẩm này'}"
+        elif cf_score > 0.0:
+            total_score = score_before_multiplier * 1.25
+            reason = f"Gợi ý từ mô hình lọc cộng tác tương tác {product.category_name or 'sản phẩm'}"
+        elif matched_intent:
+            total_score = score_before_multiplier * 1.35
             reason = f"Gợi ý cá nhân hóa dựa trên lịch sử quan tâm đến {product.category_name or 'thiết bị này'}"
         else:
             total_score = base_score
@@ -218,9 +231,16 @@ def rerank_personalized_candidates(
         for score, product, reason in scored_items[:limit]
     ]
 
+    strategy_name = (
+        "implicit_collaborative_filtering_hybrid"
+        if cf_scores
+        else "personalized_interaction_profile_boost"
+    )
+
     return RecommendationResponse(
         target_product_id=user_id,
         target_product_title=f"Cá nhân hóa cho User ID {user_id}",
-        strategy="personalized_interaction_profile_boost",
+        strategy=strategy_name,
         recommendations=recommendations,
     )
+
