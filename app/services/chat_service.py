@@ -66,9 +66,9 @@ async def generate_gemini_reply(user_message: str, products_context: str) -> str
         "1. PHONG CÁCH GIAO TIẾP & TRÒ CHUYỆN (CONVERSATIONAL STYLE):\n"
         "   - Hãy trả lời tự nhiên, lịch sự, đầy đủ câu từ, tuyệt đối không được ngắt câu giữa chừng.\n"
         "   - Nếu khách hàng chào hỏi (ví dụ: 'hi', 'hello', 'chào shop'), hãy chào lại lịch sự, tự nhiên và hỏi xem khách đang cần tư vấn thiết bị nào.\n"
-        "   - Nếu khách hỏi thông tin ngân sách (ví dụ: 'mình có 14 triệu mua laptop'), hãy đối chiếu với danh sách kho bên dưới. Nếu trong kho có sản phẩm vừa tầm giá, hãy tư vấn sản phẩm đó. Nếu sản phẩm trong kho có giá cao hơn ngân sách của khách, hãy lịch sự thông báo mức giá khởi điểm của dòng sản phẩm đó trong kho và tư vấn giải pháp phù hợp (như trả góp 0% hoặc gợi ý dòng máy tốt nhất trong tầm giá).\n\n"
-        "2. QUY TẮC PHẠM VI SẢN PHẨM (RAG RULES):\n"
-        "   - Cửa hàng chuyên kinh doanh: Laptop, Điện thoại, Tai nghe, Chuột, Bàn phím, Màn hình máy tính và Phụ kiện.\n"
+        "   - Nếu khách hỏi thông tin ngân sách (ví dụ: 'mình có 14 triệu mua laptop'), hãy đối chiếu với danh sách kho bên dưới. Nếu trong kho có sản phẩm vừa tầm giá, hãy tư vấn sản phẩm đó. Nếu sản phẩm trong kho có giá cao hơn ngân sách của khách, hãy lịch sự thông báo mức giá khởi điểm của dòng sản phẩm đó trong kho và tư vấn giải pháp phù hợp.\n\n"
+        "2. QUY TẮC KÈM LINK CHI TIẾT SẢN PHẨM (MANDATORY LINKING RULES):\n"
+        "   - Mỗi khi nhắc tới tên một sản phẩm cụ thể có trong danh sách kho bên dưới, bạn BẮT BUỘC phải viết dưới dạng Markdown link: [Tên Sản Phẩm](/product/ID) (Ví dụ: [iPhone 15 Pro Max](/product/1)).\n"
         "   - CHỈ tư vấn và đưa thông số/giá tiền của sản phẩm có mặt trong DANH SÁCH KHO bên dưới. Không tự bịa thông số hay giá tiền sai thực tế.\n\n"
         f"DANH SÁCH SẢN PHẨM SẴN CÓ TRONG KHO HỆ THỐNG:\n{products_context}\n"
     )
@@ -149,16 +149,17 @@ def generate_fallback_reply(
         )
         brand_info = f" ({prod.brand})" if prod.brand else ""
         reply_parts.append(
-            f"🔹 {idx}. **{prod.title}**{brand_info}\n"
+            f"🔹 {idx}. **[{prod.title}](/product/{prod.product_id})**{brand_info}\n"
             f"   - Giá ưu đãi: {price_str}\n"
             f"   - Đánh giá: {prod.average_rating:.1f}⭐"
         )
 
     reply_parts.append(
-        "\n💡 *Mẹo:* Bạn có thể nhấp trực tiếp vào danh sách sản phẩm gợi ý bên dưới để xem chi tiết thông số và đặt hàng!"
+        "\n💡 *Mẹo:* Bạn có thể nhấp trực tiếp vào tên sản phẩm màu xanh hoặc danh sách thẻ gợi ý bên dưới để xem chi tiết thông số và đặt hàng!"
     )
 
     return "\n\n".join(reply_parts)
+
 
 
 async def process_chat_consultation(
