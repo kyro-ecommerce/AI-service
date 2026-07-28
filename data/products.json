@@ -2,494 +2,529 @@
   {
     "product_id": 1,
     "title": "iPhone 15 Pro Max",
-    "category_id": 8,
+    "category_id": 1,
     "category_name": "phone",
     "brand": "Apple",
     "original_price": 34990000,
     "discounted_price": 32890600,
     "discount_percent": 6,
-    "average_rating": 4.8,
-    "num_ratings": 120,
-    "quantity_sold": 85,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 50,
     "description": "Điện thoại thông minh cao cấp nhất của Apple với hiệu năng vượt trội và camera tiên tiến.",
-    "detailed_review": "iPhone 15 Pro Max là một chiếc smartphone toàn diện, hội tụ những công nghệ tiên tiến nhất của Apple.",
+    "detailed_review": "Điện thoại thông minh cao cấp nhất của Apple với hiệu năng vượt trội và camera tiên tiến.",
     "specs": {
-      "chip": "Apple A17 Pro",
-      "ram": "8GB",
-      "storage": "256GB"
+      "color": "Titan tự nhiên"
     },
-    "tags": ["phone", "apple", "flagship", "ios"],
-    "image_url": "https://dashboard.dienthoaivui.com.vn/uploads/wp-content/uploads/images/iphone-15-pro-max-256gb-titan-tu-nhien-cu-tray-xuoc-1.jpg",
+    "tags": [
+      "phone",
+      "apple"
+    ],
+    "image_url": "https://cafefcdn.com/203337114487263232/2024/9/20/l1050353-16956275916131814288024-1695636379427-1695636379591231233432-17268244971181023798223-1726836228880-17268362294161090248665.jpeg",
     "is_active": true
   },
   {
     "product_id": 2,
     "title": "Xiaomi 13 Pro",
-    "category_id": 9,
+    "category_id": 2,
     "category_name": "phone",
     "brand": "Xiaomi",
     "original_price": 22990000,
     "discounted_price": 20001300,
     "discount_percent": 13,
-    "average_rating": 4.7,
-    "num_ratings": 45,
-    "quantity_sold": 30,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 59,
     "description": "Điện thoại Xiaomi cao cấp với camera Leica chuyên nghiệp.",
-    "detailed_review": "Xiaomi 13 Pro hợp tác với Leica mang lại chất lượng ảnh chụp xuất sắc.",
+    "detailed_review": "Điện thoại Xiaomi cao cấp với camera Leica chuyên nghiệp.",
     "specs": {
-      "chip": "Snapdragon 8 Gen 2",
-      "ram": "12GB",
-      "storage": "256GB"
+      "color": "Trắng Ceramic"
     },
-    "tags": ["phone", "xiaomi", "leica", "android"],
-    "image_url": "https://cellphones.com.vn/media/catalog/product/1/3/13_prooo_4_.jpg",
+    "tags": [
+      "phone",
+      "xiaomi"
+    ],
+    "image_url": "https://mobileworld.com.vn/uploads/news/01_2023/pro7.jpg",
     "is_active": true
   },
   {
     "product_id": 3,
     "title": "OPPO Find X5 Pro",
-    "category_id": 10,
+    "category_id": 3,
     "category_name": "phone",
     "brand": "OPPO",
     "original_price": 20990000,
     "discounted_price": 18051400,
     "discount_percent": 14,
-    "average_rating": 4.6,
-    "num_ratings": 32,
-    "quantity_sold": 22,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 34,
     "description": "Điện thoại OPPO flagship với thiết kế nguyên khối và sạc siêu nhanh.",
-    "detailed_review": "OPPO Find X5 Pro nổi bật với mặt lưng gốm cao cấp.",
+    "detailed_review": "Điện thoại OPPO flagship với thiết kế nguyên khối và sạc siêu nhanh.",
     "specs": {
-      "chip": "Snapdragon 8 Gen 1",
-      "ram": "12GB",
-      "storage": "256GB"
+      "color": "Glaze Black"
     },
-    "tags": ["phone", "oppo", "hasselblad"],
-    "image_url": "https://example.com/images/oppo.jpg",
+    "tags": [
+      "phone",
+      "oppo"
+    ],
+    "image_url": "https://cdn2.fptshop.com.vn/unsafe/1920x0/filters:format(webp):quality(75)/2022_2_24_637813290369252329_oppo-find-x5-pro-ra-mat-cover.jpg",
     "is_active": true
   },
   {
     "product_id": 4,
     "title": "Laptop Acer Nitro 5 Eagle",
-    "category_id": 12,
-    "category_name": "laptop",
+    "category_id": 4,
+    "category_name": "phone",
     "brand": "Acer",
     "original_price": 21990000,
     "discounted_price": 18911400,
     "discount_percent": 14,
     "average_rating": 5.0,
-    "num_ratings": 88,
-    "quantity_sold": 60,
+    "num_ratings": 1,
+    "quantity_sold": 19,
     "description": "Laptop gaming mạnh mẽ với chip Intel Core i5 và card đồ họa rời RTX 3050.",
-    "detailed_review": "Acer Nitro 5 Eagle phù hợp cho game thủ với ngân sách vừa phải.",
+    "detailed_review": "Laptop gaming mạnh mẽ với chip Intel Core i5 và card đồ họa rời RTX 3050.",
     "specs": {
-      "cpu": "Intel Core i5",
-      "gpu": "RTX 3050",
-      "ram": "16GB",
-      "storage": "512GB SSD"
+      "color": "Đen"
     },
-    "tags": ["laptop", "gaming", "acer", "rtx"],
-    "image_url": "https://example.com/images/acer.jpg",
+    "tags": [
+      "phone",
+      "acer"
+    ],
+    "image_url": "https://no1computer.vn/images/products/2023/02/10/large/acer-nitro-5-rtx-3060-jpg_1675967112-copy-1.jpg",
     "is_active": true
   },
   {
     "product_id": 5,
     "title": "Laptop ASUS ROG Strix SCAR 17",
-    "category_id": 13,
-    "category_name": "laptop",
+    "category_id": 5,
+    "category_name": "phone",
     "brand": "ASUS",
     "original_price": 69990000,
     "discounted_price": 60191400,
     "discount_percent": 14,
-    "average_rating": 4.9,
-    "num_ratings": 40,
-    "quantity_sold": 15,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 8,
     "description": "Laptop gaming cao cấp với chip AMD Ryzen 9 và card đồ họa rời RTX 4090.",
-    "detailed_review": "ASUS ROG Strix SCAR 17 là cỗ máy gaming đỉnh cao cho game thủ chuyên nghiệp.",
+    "detailed_review": "Laptop gaming cao cấp với chip AMD Ryzen 9 và card đồ họa rời RTX 4090.",
     "specs": {
-      "cpu": "AMD Ryzen 9",
-      "gpu": "RTX 4090",
-      "ram": "32GB",
-      "storage": "1TB SSD"
+      "color": "Đen"
     },
-    "tags": ["laptop", "gaming", "asus", "rog"],
-    "image_url": "https://example.com/images/asus.jpg",
+    "tags": [
+      "phone",
+      "asus"
+    ],
+    "image_url": "https://laptop88.vn/media/product/7543_528379232.jpg",
     "is_active": true
   },
   {
     "product_id": 6,
     "title": "Laptop Dell XPS 13",
-    "category_id": 14,
-    "category_name": "laptop",
+    "category_id": 6,
+    "category_name": "phone",
     "brand": "Dell",
     "original_price": 32990000,
     "discounted_price": 30020900,
     "discount_percent": 9,
-    "average_rating": 4.8,
-    "num_ratings": 55,
-    "quantity_sold": 42,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 29,
     "description": "Laptop mỏng nhẹ cao cấp cho công việc và giải trí.",
-    "detailed_review": "Dell XPS 13 Plus là biểu tượng của sự sang trọng và tính di động.",
+    "detailed_review": "Laptop mỏng nhẹ cao cấp cho công việc và giải trí.",
     "specs": {
-      "cpu": "Intel Core i7",
-      "ram": "16GB",
-      "storage": "512GB SSD"
+      "color": "Bạc"
     },
-    "tags": ["laptop", "dell", "ultrabook", "office"],
-    "image_url": "https://example.com/images/dell.jpg",
+    "tags": [
+      "phone",
+      "dell"
+    ],
+    "image_url": "https://bizweb.dktcdn.net/thumb/grande/100/512/769/products/dell-xps-13-9340-2.webp?v=1716793972937",
     "is_active": true
   },
   {
     "product_id": 7,
     "title": "Laptop HP Spectre x360 14",
-    "category_id": 15,
-    "category_name": "laptop",
+    "category_id": 7,
+    "category_name": "phone",
     "brand": "HP",
-    "original_price": 37990000,
-    "discounted_price": 34950800,
+    "original_price": 3799000,
+    "discounted_price": 3495080,
     "discount_percent": 8,
-    "average_rating": 4.7,
-    "num_ratings": 29,
-    "quantity_sold": 18,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 17,
     "description": "Laptop lai 2 trong 1 với màn hình cảm ứng và thiết kế xoay gập linh hoạt.",
-    "detailed_review": "HP Spectre x360 14 kết hợp hoàn hảo giữa thiết kế thời thượng và màn hình OLED.",
+    "detailed_review": "Laptop lai 2 trong 1 với màn hình cảm ứng và thiết kế xoay gập linh hoạt.",
     "specs": {
-      "cpu": "Intel Core Ultra",
-      "ram": "16GB",
-      "storage": "1TB SSD"
+      "color": "Xanh dương"
     },
-    "tags": ["laptop", "hp", "2in1", "touchscreen"],
-    "image_url": "https://mac24h.vn/images/detailed/94/spectre-x360-2-in-1-14-2024-mac24h.jpg",
+    "tags": [
+      "phone",
+      "hp"
+    ],
+    "image_url": "https://lapvip.vn/upload/products/original/hp-spectre-x360-14-2024-nightfall-black-1705650060.jpg",
     "is_active": true
   },
   {
     "product_id": 8,
     "title": "Sạc dự phòng Anker PowerCore III Elite",
-    "category_id": 17,
-    "category_name": "mouse",
+    "category_id": 8,
+    "category_name": "phone",
     "brand": "Anker",
     "original_price": 1599000,
     "discounted_price": 1295190,
     "discount_percent": 19,
-    "average_rating": 4.7,
-    "num_ratings": 76,
-    "quantity_sold": 90,
-    "description": "Pin sạc dự phòng dung lượng lớn 25600mAh với nhiều cổng sạc nhanh.",
-    "detailed_review": "Anker PowerCore III Elite lý tưởng cho những chuyến đi xa.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 79,
+    "description": "Pin sạc dự phòng dung lượng lớn với nhiều cổng sạc nhanh.",
+    "detailed_review": "Pin sạc dự phòng dung lượng lớn với nhiều cổng sạc nhanh.",
     "specs": {
-      "capacity": "25600mAh",
-      "power": "87W PD"
+      "color": "Đen"
     },
-    "tags": ["accessory", "anker", "powerbank"],
-    "image_url": "https://cdni.dienthoaivui.com.vn/x,webp,q100/https://dashboard.dienthoaivui.com.vn/uploads/2020/03/pin-du-phong-anker-powercore-elite-20000mah-a1273.jpg",
+    "tags": [
+      "phone",
+      "anker"
+    ],
+    "image_url": "https://phukienvang.com/wp-content/uploads/2023/11/sac-du-phong-anker-powercore-iii-elite-25600-pd-60w-a1290-3.webp",
     "is_active": true
   },
   {
     "product_id": 9,
     "title": "Sạc dự phòng Xiaomi Mi Power Bank 3",
-    "category_id": 16,
-    "category_name": "mouse",
+    "category_id": 9,
+    "category_name": "phone",
     "brand": "Xiaomi",
     "original_price": 699000,
     "discounted_price": 496290,
     "discount_percent": 29,
-    "average_rating": 4.6,
-    "num_ratings": 110,
-    "quantity_sold": 200,
-    "description": "Pin sạc dự phòng dung lượng lớn 20000mAh, thiết kế mỏng nhẹ.",
-    "detailed_review": "Xiaomi Mi Power Bank 3 giá tốt sạc nhanh ổn định.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 99,
+    "description": "Pin sạc dự phòng dung lượng lớn, thiết kế mỏng nhẹ.",
+    "detailed_review": "Pin sạc dự phòng dung lượng lớn, thiết kế mỏng nhẹ.",
     "specs": {
-      "capacity": "20000mAh"
+      "color": "Bạc"
     },
-    "tags": ["accessory", "xiaomi", "powerbank"],
-    "image_url": "https://example.com/images/xiaomi_powerbank.jpg",
+    "tags": [
+      "phone",
+      "xiaomi"
+    ],
+    "image_url": "https://minhvietstore.vn/wp-content/uploads/2021/03/xiaomiviet.vn-pin-sac-du-phong-xiaomi-power-bank-3-gen-3-30-000mah-xiaomi-power-bank-3--30.000-mah.jpg.webp",
     "is_active": true
   },
   {
     "product_id": 10,
     "title": "Tai nghe Sony WH-1000XM5",
-    "category_id": 18,
-    "category_name": "headphone",
+    "category_id": 10,
+    "category_name": "phone",
     "brand": "Sony",
     "original_price": 8990000,
     "discounted_price": 7461700,
     "discount_percent": 17,
-    "average_rating": 4.9,
-    "num_ratings": 95,
-    "quantity_sold": 70,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 28,
     "description": "Tai nghe chống ồn hàng đầu với chất âm tuyệt đỉnh.",
-    "detailed_review": "Sony WH-1000XM5 khẳng định vị thế dẫn đầu tai nghe ANC.",
+    "detailed_review": "Tai nghe chống ồn hàng đầu với chất âm tuyệt đỉnh.",
     "specs": {
-      "type": "Over-ear ANC",
-      "battery": "30h"
+      "color": "Đen"
     },
-    "tags": ["headphone", "sony", "anc", "bluetooth"],
+    "tags": [
+      "phone",
+      "sony"
+    ],
     "image_url": "https://baochauelec.com/upload/original-image/tai-nghe-sony-wh-1000xm5.png",
     "is_active": true
   },
   {
     "product_id": 11,
-    "title": "Tai nghe AirPods Pro 2",
-    "category_id": 16,
-    "category_name": "headphone",
+    "title": "Tai nghe AirPods Pro",
+    "category_id": 11,
+    "category_name": "phone",
     "brand": "Apple",
     "original_price": 6990000,
     "discounted_price": 6011400,
     "discount_percent": 14,
-    "average_rating": 4.8,
-    "num_ratings": 150,
-    "quantity_sold": 130,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 45,
     "description": "Tai nghe không dây cao cấp với khả năng chống ồn chủ động và âm thanh không gian.",
-    "detailed_review": "AirPods Pro Gen 2 mang đến trải nghiệm nghe âm thanh chân thực.",
+    "detailed_review": "Tai nghe không dây cao cấp với khả năng chống ồn chủ động và âm thanh không gian.",
     "specs": {
-      "chip": "Apple H2",
-      "type": "In-ear ANC"
+      "color": "Trắng"
     },
-    "tags": ["headphone", "apple", "airpods", "anc"],
+    "tags": [
+      "phone",
+      "apple"
+    ],
     "image_url": "https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-airpods-4-chong-on-chu-dong-thumb_1.png",
     "is_active": true
   },
   {
     "product_id": 12,
-    "title": "Samsung Galaxy Tab S8 Ultra",
-    "category_id": 20,
-    "category_name": "tablet",
+    "title": "Máy tính bảng Samsung Galaxy Tab S8 Ultra",
+    "category_id": 12,
+    "category_name": "phone",
     "brand": "Samsung",
     "original_price": 27990000,
     "discounted_price": 24911100,
     "discount_percent": 11,
-    "average_rating": 4.7,
-    "num_ratings": 35,
+    "average_rating": 0.0,
+    "num_ratings": 0,
     "quantity_sold": 20,
     "description": "Máy tính bảng cao cấp với màn hình lớn và bút S Pen đi kèm.",
-    "detailed_review": "Galaxy Tab S8 Ultra với màn 14.6 inch AMOLED làm việc xuất sắc.",
+    "detailed_review": "Máy tính bảng cao cấp với màn hình lớn và bút S Pen đi kèm.",
     "specs": {
-      "screen": "14.6 inch AMOLED",
-      "ram": "12GB"
+      "color": "Graphite"
     },
-    "tags": ["tablet", "samsung", "spen"],
-    "image_url": "https://example.com/images/tabs8.jpg",
+    "tags": [
+      "phone",
+      "samsung"
+    ],
+    "image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRp71ooFxMgt6QW3MmhvW8BxxqCT0n1xSACQQ&s",
     "is_active": true
   },
   {
     "product_id": 13,
-    "title": "iPad Pro 12.9 inch (M2)",
-    "category_id": 19,
-    "category_name": "tablet",
+    "title": "iPad Pro 12.9 inch (M2, 2022)",
+    "category_id": 13,
+    "category_name": "phone",
     "brand": "Apple",
     "original_price": 30990000,
     "discounted_price": 27891000,
     "discount_percent": 10,
-    "average_rating": 4.9,
-    "num_ratings": 80,
-    "quantity_sold": 65,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 18,
     "description": "Máy tính bảng mạnh mẽ với chip M2 và màn hình Liquid Retina XDR.",
-    "detailed_review": "iPad Pro M2 xử lý tác vụ đồ họa chuyên nghiệp mượt mà.",
+    "detailed_review": "Máy tính bảng mạnh mẽ với chip M2 và màn hình Liquid Retina XDR.",
     "specs": {
-      "chip": "Apple M2",
-      "screen": "12.9 inch mini-LED"
+      "color": "Space Gray"
     },
-    "tags": ["tablet", "apple", "ipad", "m2"],
-    "image_url": "https://tuanphong.vn/pictures/full/2020/03/1584963297-349-tai-nghe-bluetooth-apple-airpods-pro-7.jpg",
+    "tags": [
+      "phone",
+      "apple"
+    ],
+    "image_url": "https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-airpods-4-chong-on-chu-dong-thumb_1.png",
     "is_active": true
   },
   {
     "product_id": 14,
     "title": "MacBook Air M2",
-    "category_id": 11,
-    "category_name": "laptop",
+    "category_id": 14,
+    "category_name": "phone",
     "brand": "Apple",
     "original_price": 30990000,
     "discounted_price": 29130600,
     "discount_percent": 6,
-    "average_rating": 4.9,
-    "num_ratings": 140,
-    "quantity_sold": 110,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 43,
     "description": "Laptop mỏng nhẹ với chip M2 mạnh mẽ, thời lượng pin dài và thiết kế không quạt.",
-    "detailed_review": "MacBook Air M2 kết hợp hoàn hảo giữa mỏng nhẹ và pin 18 tiếng.",
+    "detailed_review": "Laptop mỏng nhẹ với chip M2 mạnh mẽ, thời lượng pin dài và thiết kế không quạt.",
     "specs": {
-      "chip": "Apple M2",
-      "ram": "8GB",
-      "storage": "256GB"
+      "color": "Midnight"
     },
-    "tags": ["laptop", "apple", "macbook", "m2"],
+    "tags": [
+      "phone",
+      "apple"
+    ],
     "image_url": "https://shopdunk.com/images/thumbs/0005889_macbook-air-m2-mau-midnight_1600.jpeg",
     "is_active": true
   },
   {
     "product_id": 15,
     "title": "OnePlus 12",
-    "category_id": 21,
+    "category_id": 15,
     "category_name": "phone",
     "brand": "OnePlus",
     "original_price": 21990000,
     "discounted_price": 20010900,
     "discount_percent": 9,
-    "average_rating": 4.8,
-    "num_ratings": 25,
-    "quantity_sold": 19,
-    "description": "Flagship với chip Snapdragon 8 Gen 3, camera Hasselblad, sạc nhanh 100W.",
-    "detailed_review": "OnePlus 12 mang đến hiệu năng mượt mà vượt trội.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 35,
+    "description": "Flagship với chip Snapdragon 8 Gen 3, camera Hasselblad, sạc nhanh 100W và màn hình LTPO AMOLED 120Hz.",
+    "detailed_review": "Flagship với chip Snapdragon 8 Gen 3, camera Hasselblad, sạc nhanh 100W và màn hình LTPO AMOLED 120Hz.",
     "specs": {
-      "chip": "Snapdragon 8 Gen 3",
-      "ram": "16GB"
+      "color": "Flowy Emerald"
     },
-    "tags": ["phone", "oneplus", "android"],
-    "image_url": "https://example.com/images/oneplus12.jpg",
+    "tags": [
+      "phone",
+      "oneplus"
+    ],
+    "image_url": "https://i.ebayimg.com/images/g/X8MAAOSwdndmM67A/s-l400.jpg",
     "is_active": true
   },
   {
     "product_id": 16,
     "title": "Surface Laptop Studio 2",
-    "category_id": 22,
-    "category_name": "laptop",
+    "category_id": 16,
+    "category_name": "phone",
     "brand": "Microsoft",
     "original_price": 52990000,
     "discounted_price": 49810600,
     "discount_percent": 6,
-    "average_rating": 4.7,
-    "num_ratings": 18,
-    "quantity_sold": 12,
-    "description": "Laptop đa năng với màn hình có thể gập linh hoạt và bút Surface Slim Pen 2.",
-    "detailed_review": "Surface Laptop Studio 2 cho dân thiết kế đồ họa chuyên nghiệp.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 20,
+    "description": "Laptop đa năng với màn hình có thể gập linh hoạt, bút Surface Slim Pen 2 và hiệu năng đồ họa mạnh mẽ.",
+    "detailed_review": "Laptop đa năng với màn hình có thể gập linh hoạt, bút Surface Slim Pen 2 và hiệu năng đồ họa mạnh mẽ.",
     "specs": {
-      "cpu": "Intel Core i7",
-      "gpu": "RTX 4050"
+      "color": "Platinum"
     },
-    "tags": ["laptop", "microsoft", "surface"],
-    "image_url": "https://example.com/images/surface.jpg",
+    "tags": [
+      "phone",
+      "microsoft"
+    ],
+    "image_url": "https://cdn-dynmedia-1.microsoft.com/is/image/microsoftcorp/Highlight-Consumer-Laptop-Studio-2-Platinum-001:VP1-539x440",
     "is_active": true
   },
   {
     "product_id": 17,
     "title": "UltraGear 34GN850-B",
-    "category_id": 24,
-    "category_name": "monitor",
+    "category_id": 17,
+    "category_name": "phone",
     "brand": "LG",
     "original_price": 21990000,
     "discounted_price": 20010900,
     "discount_percent": 9,
-    "average_rating": 4.8,
-    "num_ratings": 42,
-    "quantity_sold": 28,
-    "description": "Màn hình gaming cong UltraWide QHD với tần số quét 160Hz, Nano IPS.",
-    "detailed_review": "LG UltraGear 34GN850-B đem lại trải nghiệm gaming đắm chìm.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 18,
+    "description": "Màn hình gaming cong UltraWide QHD với tần số quét 160Hz, HDR, sync G-Sync và FreeSync và độ phủ màu rộng.",
+    "detailed_review": "Màn hình gaming cong UltraWide QHD với tần số quét 160Hz, HDR, sync G-Sync và FreeSync và độ phủ màu rộng.",
     "specs": {
-      "screen": "34 inch QHD 160Hz"
+      "color": "Black"
     },
-    "tags": ["monitor", "lg", "gaming"],
-    "image_url": "https://example.com/images/lgmonitor.jpg",
+    "tags": [
+      "phone",
+      "lg"
+    ],
+    "image_url": "https://phongvukinhbac.vn/wp-content/uploads/2021/09/man-hinh-lg-utragear-gaming-34gn850-b-phong-vu-kinh-bac-min.jpg10-min.jpg",
     "is_active": true
   },
   {
     "product_id": 18,
-    "title": "Chuột Logitech MX Master 3S",
-    "category_id": 25,
-    "category_name": "mouse",
+    "title": "MX Master 3S",
+    "category_id": 18,
+    "category_name": "phone",
     "brand": "Logitech",
     "original_price": 2790000,
     "discounted_price": 2483100,
     "discount_percent": 11,
-    "average_rating": 4.9,
-    "num_ratings": 160,
-    "quantity_sold": 140,
-    "description": "Chuột không dây cao cấp với cảm biến 8K DPI, cuộn siêu nhanh và công thái học.",
-    "detailed_review": "Logitech MX Master 3S là chuột văn phòng làm việc số 1 thế giới.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 29,
+    "description": "Chuột không dây cao cấp với cảm biến 8K DPI, cuộn siêu nhanh và thiết kế công thái học.",
+    "detailed_review": "Chuột không dây cao cấp với cảm biến 8K DPI, cuộn siêu nhanh và thiết kế công thái học.",
     "specs": {
-      "sensor": "Darkfield 8000 DPI",
-      "connection": "Logi Bolt / Bluetooth"
+      "color": "Graphite"
     },
-    "tags": ["mouse", "logitech", "office", "accessory"],
+    "tags": [
+      "phone",
+      "logitech"
+    ],
     "image_url": "https://d28jzcg6y4v9j1.cloudfront.net/chuot_logitech_mx_3s_co_thiet_ke_chuan_cong_thai_hoc_1719808317791.jpg",
     "is_active": true
   },
   {
     "product_id": 19,
     "title": "Mac Studio M2 Ultra",
-    "category_id": 26,
-    "category_name": "pc",
+    "category_id": 19,
+    "category_name": "phone",
     "brand": "Apple",
     "original_price": 104990000,
     "discounted_price": 98690600,
     "discount_percent": 6,
-    "average_rating": 5.0,
-    "num_ratings": 15,
-    "quantity_sold": 8,
-    "description": "Máy tính để bàn siêu mạnh mẽ với chip M2 Ultra, thiết kế nhỏ gọn.",
-    "detailed_review": "Mac Studio M2 Ultra là cỗ máy trạm mạnh nhất cho công việc render 8K.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 10,
+    "description": "Máy tính để bàn mạnh mẽ với chip M2 Ultra, cổng kết nối đa dạng và thiết kế nhỏ gọn.",
+    "detailed_review": "Máy tính để bàn mạnh mẽ với chip M2 Ultra, cổng kết nối đa dạng và thiết kế nhỏ gọn.",
     "specs": {
-      "chip": "Apple M2 Ultra",
-      "ram": "64GB"
+      "color": "Silver"
     },
-    "tags": ["pc", "apple", "macstudio"],
-    "image_url": "https://example.com/images/macstudio.jpg",
+    "tags": [
+      "phone",
+      "apple"
+    ],
+    "image_url": "https://www.apple.com/newsroom/images/live-action/wwdc-2023/standard/mac-studio-mac-pro/Apple-WWDC23-Mac-Pro-M2-Ultra-Mac-Studio-M2-Max-M2-Ultra-230605.jpg.news_app_ed.jpg",
     "is_active": true
   },
   {
     "product_id": 20,
-    "title": "Laptop ROG Zephyrus G14",
-    "category_id": 27,
-    "category_name": "laptop",
+    "title": "ROG Zephyrus G14",
+    "category_id": 20,
+    "category_name": "phone",
     "brand": "Asus",
     "original_price": 38990000,
     "discounted_price": 35091000,
     "discount_percent": 10,
-    "average_rating": 4.8,
-    "num_ratings": 50,
-    "quantity_sold": 33,
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 18,
     "description": "Laptop gaming mỏng nhẹ với màn hình OLED 14-inch và hiệu năng ấn tượng.",
-    "detailed_review": "ROG Zephyrus G14 đỉnh cao sự mỏng nhẹ gaming.",
+    "detailed_review": "Laptop gaming mỏng nhẹ với màn hình OLED 14-inch và hiệu năng ấn tượng.",
     "specs": {
-      "cpu": "AMD Ryzen 9",
-      "gpu": "RTX 4060",
-      "screen": "14 inch OLED 120Hz"
+      "color": "Moonlight White"
     },
-    "tags": ["laptop", "asus", "zephyrus"],
-    "image_url": "https://example.com/images/g14.jpg",
+    "tags": [
+      "phone",
+      "asus"
+    ],
+    "image_url": "https://laptoplc.com.vn/wp-content/uploads/2023/07/11-1-1024x404.jpeg",
     "is_active": true
   },
   {
     "product_id": 21,
-    "title": "Bàn phím Keychron Q1 Pro",
-    "category_id": 28,
-    "category_name": "keyboard",
+    "title": "Q1 Pro",
+    "category_id": 21,
+    "category_name": "phone",
     "brand": "Keychron",
     "original_price": 4990000,
     "discounted_price": 4491000,
     "discount_percent": 10,
-    "average_rating": 4.9,
-    "num_ratings": 65,
-    "quantity_sold": 55,
-    "description": "Bàn phím cơ không dây cao cấp có thể tùy biến với khung nhôm CNC, đèn RGB.",
-    "detailed_review": "Keychron Q1 Pro bàn phím cơ custom không dây tuyệt vời.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 34,
+    "description": "Bàn phím cơ không dây cao cấp có thể tùy biến với khung nhôm CNC, đèn RGB và công nghệ QMK/VIA.",
+    "detailed_review": "Bàn phím cơ không dây cao cấp có thể tùy biến với khung nhôm CNC, đèn RGB và công nghệ QMK/VIA.",
     "specs": {
-      "connection": "Bluetooth / Type-C",
-      "case": "Full CNC Aluminum"
+      "color": "Carbon Black"
     },
-    "tags": ["keyboard", "keychron", "mechanical", "accessory"],
-    "image_url": "https://example.com/images/keychron.jpg",
+    "tags": [
+      "phone",
+      "keychron"
+    ],
+    "image_url": "https://product.hstatic.net/200000837185/product/1_56e0a7a74b95400bb281ad0df3c9d9f2.png",
     "is_active": true
   },
   {
     "product_id": 22,
     "title": "Playstation 5 Pro",
-    "category_id": 30,
-    "category_name": "console",
+    "category_id": 22,
+    "category_name": "phone",
     "brand": "Sony",
     "original_price": 15990000,
     "discounted_price": 15030600,
     "discount_percent": 6,
-    "average_rating": 4.9,
-    "num_ratings": 40,
-    "quantity_sold": 30,
-    "description": "Máy chơi game thế hệ mới với sức mạnh đồ họa vượt trội, SSD siêu nhanh.",
-    "detailed_review": "PS5 Pro nâng tầm trải nghiệm chơi game 4K 120fps.",
+    "average_rating": 0.0,
+    "num_ratings": 0,
+    "quantity_sold": 40,
+    "description": "Máy chơi game thế hệ mới với sức mạnh đồ họa vượt trội, SSD siêu nhanh và tay cầm DualSense cải tiến.",
+    "detailed_review": "Máy chơi game thế hệ mới với sức mạnh đồ họa vượt trội, SSD siêu nhanh và tay cầm DualSense cải tiến.",
     "specs": {
-      "storage": "2TB SSD",
-      "resolution": "4K 120Hz"
+      "color": "White"
     },
-    "tags": ["console", "sony", "ps5"],
-    "image_url": "https://example.com/images/ps5pro.jpg",
+    "tags": [
+      "phone",
+      "sony"
+    ],
+    "image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRBMID2z7T97Y3dVtKvIM1IUaMd5BbwUu3ZHg&s",
     "is_active": true
   }
 ]
