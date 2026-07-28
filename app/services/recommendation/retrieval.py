@@ -40,13 +40,34 @@ def retrieve_candidates_for_accessories(
     limit: int = 50,
 ) -> list[Product]:
     """Stage 1 Candidate Retrieval for Accessory / Complementary Products."""
+    from app.services.search_service import normalize_text
+
+    norm_allowed = [normalize_text(cat) for cat in allowed_categories]
+    target_cat_norm = normalize_text(target_product.category_name or "")
+
+    candidates = [
+        p
+        for p in products
+        if p.product_id != target_product.product_id
+        and p.is_active
+        and any(
+            cat in normalize_text(p.category_name or "") or cat in normalize_text(p.title or "")
+            for cat in norm_allowed
+        )
+    ]
+
+    if candidates:
+        return candidates[:limit]
+
+    # Fallback cross-category candidate selection
     return [
         p
         for p in products
         if p.product_id != target_product.product_id
         and p.is_active
-        and (p.category_name or "").strip().lower() in allowed_categories
+        and normalize_text(p.category_name or "") != target_cat_norm
     ][:limit]
+
 
 
 def retrieve_candidates_for_trending(

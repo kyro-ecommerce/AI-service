@@ -19,13 +19,20 @@ from app.services.search_service import normalize_text
 logger = logging.getLogger("ai-service.recommendations")
 
 COMPLEMENTARY_CATEGORIES = {
-    "laptop": ["mouse", "keyboard", "headphone", "monitor"],
-    "phone": ["headphone"],
-    "monitor": ["keyboard", "mouse", "headphone"],
-    "keyboard": ["mouse", "monitor", "headphone"],
-    "mouse": ["keyboard", "monitor", "headphone"],
-    "headphone": ["phone", "laptop"],
+    "laptop": ["mouse", "keyboard", "headphone", "monitor", "sac", "phu kien", "chuot", "ban phim", "tai nghe"],
+    "phone": ["headphone", "tai nghe", "sac", "phu kien", "cap"],
+    "dien thoai": ["headphone", "tai nghe", "sac", "phu kien", "cap"],
+    "monitor": ["keyboard", "mouse", "headphone", "ban phim", "chuot", "tai nghe"],
+    "man hinh": ["keyboard", "mouse", "headphone", "ban phim", "chuot", "tai nghe"],
+    "keyboard": ["mouse", "monitor", "headphone", "chuot", "man hinh", "tai nghe"],
+    "ban phim": ["mouse", "monitor", "headphone", "chuot", "man hinh", "tai nghe"],
+    "mouse": ["keyboard", "monitor", "headphone", "ban phim", "man hinh", "tai nghe"],
+    "chuot": ["keyboard", "monitor", "headphone", "ban phim", "man hinh", "tai nghe"],
+    "headphone": ["phone", "laptop", "dien thoai"],
+    "tai nghe": ["phone", "laptop", "dien thoai"],
+    "phu kien": ["headphone", "mouse", "keyboard", "laptop", "phone"],
 }
+
 
 
 from app.services.recommendation.caching import get_cached_recommendation
