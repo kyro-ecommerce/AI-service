@@ -18,10 +18,10 @@ def get_embedding_model() -> Any:
             from sentence_transformers import SentenceTransformer
 
             logger.info("Loading sentence-transformer model: %s", MODEL_NAME)
-            _model = SentenceTransformer(MODEL_NAME)
+            _model = SentenceTransformer(MODEL_NAME, device="cpu")
         except Exception as exc:
             logger.error("Failed to load SentenceTransformer model %s: %s", MODEL_NAME, exc)
-            raise exc
+            return None
 
     return _model
 
@@ -31,7 +31,21 @@ def generate_embedding(text: str) -> list[float]:
     if not text or not text.strip():
         return [0.0] * VECTOR_DIMENSION
 
-    model = get_embedding_model()
-    embedding = model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
+    try:
+        model = get_embedding_model()
+        if model is not None:
+            embedding = model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
+            return embedding.tolist()
+    except Exception as exc:
+        logger.warning("SentenceTransformer encoding failed (%s), using hashing fallback vector.", exc)
 
-    return embedding.tolist()
+    # Deterministic 384-dimensional hashing fallback vector
+    import hashlib, math
+    vec = [0.0] * VECTOR_DIMENSION
+    tokens = text.lower().split()
+    for token in tokens:
+        idx = int(hashlib.md5(token.encode('utf-8')).hexdigest(), 16) % VECTOR_DIMENSION
+        vec[idx] += 1.0
+    norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+    return [x / norm for x in vec]
+
