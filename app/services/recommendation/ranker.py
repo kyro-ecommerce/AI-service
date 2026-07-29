@@ -14,13 +14,8 @@ def rerank_similar_candidates(
     candidates: list[Product],
     limit: int = 5,
 ) -> RecommendationResponse:
-    """Stage 2 Multi-Objective Re-ranker for Similar Products."""
-    target_vector = (
-        target_product.embedding
-        if target_product.embedding
-        else generate_embedding(build_content_text(target_product))
-    )
-
+    """Stage 2 Multi-Objective Ultra-Fast Re-ranker for Similar Products."""
+    target_vector = target_product.embedding
     target_brand = normalize_text(target_product.brand or "")
     target_keywords = set(normalize_text(target_product.title or "").split())
 
@@ -30,12 +25,14 @@ def rerank_similar_candidates(
         cand_brand = normalize_text(candidate.brand or "")
         cand_keywords = set(normalize_text(candidate.title or "").split())
 
-        candidate_vector = (
-            candidate.embedding
-            if candidate.embedding
-            else generate_embedding(build_content_text(candidate))
-        )
-        sim_score = calculate_cosine_similarity(target_vector, candidate_vector)
+        if target_vector and candidate.embedding:
+            sim_score = calculate_cosine_similarity(target_vector, candidate.embedding)
+        else:
+            intersection = len(target_keywords.intersection(cand_keywords))
+            union = len(target_keywords.union(cand_keywords)) or 1
+            jaccard = intersection / union
+            rating_score = ((candidate.average_rating or 4.0) / 5.0) * 0.2
+            sim_score = (jaccard * 0.8) + rating_score
 
         brand_boost = 0.15 if cand_brand and cand_brand == target_brand else 0.0
         keyword_overlap = len(target_keywords.intersection(cand_keywords)) * 0.15
@@ -72,7 +69,7 @@ def rerank_similar_candidates(
     return RecommendationResponse(
         target_product_id=target_product.product_id,
         target_product_title=target_product.title,
-        strategy="hybrid_vector_keyword_similarity",
+        strategy="fast_hybrid_keyword_vector_similarity",
         recommendations=recommendations,
     )
 
@@ -82,22 +79,18 @@ def rerank_accessory_candidates(
     candidates: list[Product],
     limit: int = 5,
 ) -> RecommendationResponse:
-    """Stage 2 Re-ranker for Accessory / Complementary Products."""
-    target_vector = (
-        target_product.embedding
-        if target_product.embedding
-        else generate_embedding(build_content_text(target_product))
-    )
+    """Stage 2 Ultra-Fast Re-ranker for Accessory / Complementary Products."""
+    target_vector = target_product.embedding
 
     accessory_items: list[tuple[float, Product, str]] = []
 
     for candidate in candidates:
-        candidate_vector = (
-            candidate.embedding
-            if candidate.embedding
-            else generate_embedding(build_content_text(candidate))
-        )
-        sim_score = calculate_cosine_similarity(target_vector, candidate_vector)
+        if target_vector and candidate.embedding:
+            sim_score = calculate_cosine_similarity(target_vector, candidate.embedding)
+        else:
+            rating_score = ((candidate.average_rating or 4.0) / 5.0) * 0.6
+            discount_boost = 0.2 if (candidate.discount_percent or 0) > 0 else 0.0
+            sim_score = rating_score + discount_boost
 
         rating_score = ((candidate.average_rating or 4.0) / 5.0) * 0.2
         total_score = sim_score + rating_score
@@ -127,7 +120,7 @@ def rerank_accessory_candidates(
     return RecommendationResponse(
         target_product_id=target_product.product_id,
         target_product_title=target_product.title,
-        strategy="cross_category_complementary_matrix",
+        strategy="fast_cross_category_complementary_matrix",
         recommendations=recommendations,
     )
 

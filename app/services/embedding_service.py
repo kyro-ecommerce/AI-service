@@ -26,20 +26,21 @@ def get_embedding_model() -> Any:
     return _model
 
 
-def generate_embedding(text: str) -> list[float]:
-    """Generate a 384-dimensional dense vector embedding for the given text."""
+from functools import lru_cache
+
+@lru_cache(maxsize=2000)
+def _generate_embedding_cached(text: str) -> tuple[float, ...]:
     if not text or not text.strip():
-        return [0.0] * VECTOR_DIMENSION
+        return (0.0,) * VECTOR_DIMENSION
 
     try:
         model = get_embedding_model()
         if model is not None:
             embedding = model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
-            return embedding.tolist()
+            return tuple(embedding.tolist())
     except Exception as exc:
         logger.warning("SentenceTransformer encoding failed (%s), using hashing fallback vector.", exc)
 
-    # Deterministic 384-dimensional hashing fallback vector
     import hashlib, math
     vec = [0.0] * VECTOR_DIMENSION
     tokens = text.lower().split()
@@ -47,5 +48,10 @@ def generate_embedding(text: str) -> list[float]:
         idx = int(hashlib.md5(token.encode('utf-8')).hexdigest(), 16) % VECTOR_DIMENSION
         vec[idx] += 1.0
     norm = math.sqrt(sum(x * x for x in vec)) or 1.0
-    return [x / norm for x in vec]
+    return tuple(x / norm for x in vec)
+
+
+def generate_embedding(text: str) -> list[float]:
+    """Generate a 384-dimensional dense vector embedding for the given text with LRU caching."""
+    return list(_generate_embedding_cached(text))
 

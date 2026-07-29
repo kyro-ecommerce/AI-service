@@ -60,7 +60,7 @@ def recommend_similar_products(
         candidates = retrieve_candidates_for_similar(
             products=products,
             target_product=target_product,
-            limit=50,
+            limit=20,
         )
         return rerank_similar_candidates(
             target_product=target_product,
@@ -99,7 +99,7 @@ def recommend_accessories(
             products=products,
             target_product=target_product,
             allowed_categories=allowed_accessory_cats,
-            limit=50,
+            limit=20,
         )
 
         return rerank_accessory_candidates(
@@ -119,12 +119,12 @@ def recommend_trending_products(
     cache_key = f"rec_trending:{limit}"
 
     def _compute():
-        candidates = retrieve_candidates_for_trending(products=products, limit=50)
+        candidates = retrieve_candidates_for_trending(products=products, limit=20)
         return rerank_trending_candidates(candidates=candidates, limit=limit)
 
     res = get_cached_recommendation(cache_key, _compute)
     if res is None:
-        candidates = retrieve_candidates_for_trending(products=products, limit=50)
+        candidates = retrieve_candidates_for_trending(products=products, limit=20)
         return rerank_trending_candidates(candidates=candidates, limit=limit)
     return res
 
@@ -142,7 +142,7 @@ def recommend_personalized_products(
     user_intents = get_user_recent_intents(db, user_id)
     cf_scores = compute_user_collaborative_scores(user_id=user_id, products=products, db=db)
 
-    candidates = retrieve_candidates_for_personalized(products=products, limit=50)
+    candidates = retrieve_candidates_for_personalized(products=products, limit=20)
 
     return rerank_personalized_candidates(
         user_id=user_id,
