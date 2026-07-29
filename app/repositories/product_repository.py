@@ -89,17 +89,28 @@ def list_active_products(db: Session) -> list[Product]:
     return [to_product_schema(product) for product in products]
 
 
+_products_cache: tuple[list[Product], str] | None = None
+_products_cache_time: float = 0.0
+
+
 def list_active_products_safe(db: Session = None) -> tuple[list[Product], str]:
-    """Retrieve active products from PostgreSQL database if available, else fallback to data/products.json."""
+    """Retrieve active products from PostgreSQL database if available, else fallback to data/products.json, cached in memory for 30s."""
+    global _products_cache, _products_cache_time
+    now = time.time()
+
+    if _products_cache is not None and (now - _products_cache_time) < 30.0:
+        return _products_cache
+
+    result = None
     if db is not None:
         try:
             products = list_active_products(db)
             if products:
-                return products, "database"
+                result = (products, "database")
         except Exception as exc:
-            logger.warning("PostgreSQL DB unavailable (%s). Falling back to data/products.json dataset.", exc)
+            logger.warning("PostgreSQL DB unavailable (%s). Falling back to dataset.", exc)
 
-    if PRODUCTS_FILE.exists():
+    if result is None and PRODUCTS_FILE.exists():
         raw_products = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
         fallback_products = []
         for idx, raw in enumerate(raw_products, start=1):
@@ -113,9 +124,14 @@ def list_active_products_safe(db: Session = None) -> tuple[list[Product], str]:
             if "original_price" not in prod and "price" in prod:
                 prod["original_price"] = int(prod["price"])
             fallback_products.append(Product(**prod))
-        return [p for p in fallback_products if p.is_active], "fallback_json"
+        result = ([p for p in fallback_products if p.is_active], "fallback_json")
 
-    return [], "fallback_json"
+    if result is None:
+        result = ([], "fallback_json")
+
+    _products_cache = result
+    _products_cache_time = now
+    return result
 
 
 

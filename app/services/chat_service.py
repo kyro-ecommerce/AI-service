@@ -100,7 +100,7 @@ async def generate_gemini_reply(
         for model in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY.strip()}"
             try:
-                response = await client.post(url, json=payload, timeout=3.5)
+                response = await client.post(url, json=payload, timeout=2.0)
                 if response.status_code == 200:
                     res_data = response.json()
                     candidates = res_data.get("candidates", [])
