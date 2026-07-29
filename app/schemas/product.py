@@ -45,6 +45,7 @@ class Product(BaseModel):
     specs: dict[str, Any] | None = None
     tags: list[str] = Field(default_factory=list)
     image_url: str | None = None
+    embedding: list[float] | None = None
     is_active: bool = True
 
     @model_validator(mode="after")

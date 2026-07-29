@@ -44,11 +44,14 @@ def retrieve_candidates_for_accessories(
 
     norm_allowed = [normalize_text(cat) for cat in allowed_categories]
     target_cat_norm = normalize_text(target_product.category_name or "")
+    target_title_norm = normalize_text(target_product.title or "")
 
     candidates = [
         p
         for p in products
         if p.product_id != target_product.product_id
+        and normalize_text(p.title or "") != target_title_norm
+        and normalize_text(p.category_name or "") != target_cat_norm
         and p.is_active
         and any(
             cat in normalize_text(p.category_name or "") or cat in normalize_text(p.title or "")
@@ -59,11 +62,12 @@ def retrieve_candidates_for_accessories(
     if candidates:
         return candidates[:limit]
 
-    # Fallback cross-category candidate selection
+    # Fallback cross-category candidate selection: exclude same product ID, same title, and same category
     return [
         p
         for p in products
         if p.product_id != target_product.product_id
+        and normalize_text(p.title or "") != target_title_norm
         and p.is_active
         and normalize_text(p.category_name or "") != target_cat_norm
     ][:limit]

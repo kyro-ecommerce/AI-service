@@ -15,12 +15,17 @@ from app.routes.search import router as search_router
 from app.services.event_consumer import start_event_consumer_loop
 
 
+import httpx
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Launch background RabbitMQ event consumer task
+    # Startup: Launch background RabbitMQ event consumer task & reusable HTTP client
     consumer_task = asyncio.create_task(start_event_consumer_loop())
+    app.state.http_client = httpx.AsyncClient(timeout=15.0)
     yield
-    # Shutdown: Cancel background consumer task
+    # Shutdown: Close HTTP client and cancel background consumer task
+    await app.state.http_client.aclose()
     consumer_task.cancel()
     try:
         await consumer_task

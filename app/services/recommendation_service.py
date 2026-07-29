@@ -85,9 +85,15 @@ def recommend_accessories(
             return None
 
         target_cat = normalize_text(target_product.category_name or "")
-        allowed_accessory_cats = COMPLEMENTARY_CATEGORIES.get(
-            target_cat, ["headphone", "mouse", "keyboard"]
-        )
+        allowed_accessory_cats = None
+
+        for key, cats in COMPLEMENTARY_CATEGORIES.items():
+            if key in target_cat or target_cat in key:
+                allowed_accessory_cats = cats
+                break
+
+        if not allowed_accessory_cats:
+            allowed_accessory_cats = ["headphone", "mouse", "keyboard", "tai nghe", "chuot", "ban phim", "phu kien", "sac"]
 
         candidates = retrieve_candidates_for_accessories(
             products=products,

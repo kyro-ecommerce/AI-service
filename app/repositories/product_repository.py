@@ -74,6 +74,7 @@ def to_product_schema(product: AIProduct) -> Product:
         specs=product.specs or {},
         tags=product.tags or [],
         image_url=product.image_url,
+        embedding=list(product.embedding) if product.embedding is not None else None,
         is_active=product.is_active,
     )
 

@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import logging
 from sqlalchemy.orm import Session
@@ -56,7 +57,11 @@ def get_store_qa_response(normalized_msg: str) -> str | None:
     return None
 
 
-async def generate_gemini_reply(user_message: str, products_context: str) -> str | None:
+async def generate_gemini_reply(
+    user_message: str,
+    products_context: str,
+    http_client: httpx.AsyncClient | None = None,
+) -> str | None:
     """Invoke Google Gemini REST API asynchronously with resilient model cascade."""
     if not GEMINI_API_KEY.strip():
         return None
@@ -74,7 +79,6 @@ async def generate_gemini_reply(user_message: str, products_context: str) -> str
     )
 
     models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"]
-    # Deduplicate while maintaining order
     unique_models = list(dict.fromkeys(models_to_try))
 
     payload = {
@@ -92,7 +96,7 @@ async def generate_gemini_reply(user_message: str, products_context: str) -> str
         },
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async def _execute_post(client: httpx.AsyncClient) -> str | None:
         for model in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY.strip()}"
             try:
@@ -108,8 +112,13 @@ async def generate_gemini_reply(user_message: str, products_context: str) -> str
                     logger.warning("Gemini model '%s' returned status %s: %s", model, response.status_code, response.text)
             except Exception as exc:
                 logger.warning("Gemini model '%s' call failed (%s). Trying next fallback model...", model, exc)
+        return None
 
-    return None
+    if http_client is not None:
+        return await _execute_post(http_client)
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        return await _execute_post(client)
 
 
 def generate_fallback_reply(
@@ -167,6 +176,7 @@ async def process_chat_consultation(
     limit: int = 4,
     db: Session | None = None,
     user_id: int = 0,
+    http_client: httpx.AsyncClient | None = None,
 ) -> ChatResponse:
     """Main RAG Chat Pipeline combining Intent Recognition, Hybrid Search, and LLM/Fallback generation."""
     from app.repositories.user_interaction_repository import record_user_interaction
@@ -178,17 +188,23 @@ async def process_chat_consultation(
     is_greeting = is_pure_greeting(norm_msg)
     store_qa_answer = get_store_qa_response(norm_msg)
 
-    active_products, source = list_active_products_safe(db)
+    active_products, source = await asyncio.to_thread(list_active_products_safe, db)
 
     # Search products only if not a pure greeting / store QA or if searching for products
     search_results = []
     if not is_greeting and not store_qa_answer:
-        search_results = search_products(products=active_products, query=message, limit=limit)
+        search_results = await asyncio.to_thread(
+            search_products,
+            products=active_products,
+            query=message,
+            limit=limit,
+        )
 
     primary_intents = extract_primary_category_intents(message)
 
     if user_id and user_id > 0 and db is not None:
-        record_user_interaction(
+        await asyncio.to_thread(
+            record_user_interaction,
             db=db,
             user_id=user_id,
             interaction_type="CHAT",
@@ -207,7 +223,11 @@ async def process_chat_consultation(
             has_category_mismatch = True
 
     products_context = format_products_context(search_results)
-    reply = await generate_gemini_reply(user_message=message, products_context=products_context)
+    reply = await generate_gemini_reply(
+        user_message=message,
+        products_context=products_context,
+        http_client=http_client,
+    )
 
     if not reply:
         if store_qa_answer:

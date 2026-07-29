@@ -139,31 +139,8 @@ def compute_user_collaborative_scores(
         if not category_weights:
             return {}
 
-        try:
-            import numpy as np
-            from sklearn.decomposition import TruncatedSVD
-
-            categories = list(category_weights.keys())
-            weights = np.array([category_weights[c] for c in categories], dtype=np.float32)
-
-            if len(categories) > 1:
-                n_components = min(len(categories) - 1, 4)
-                svd = TruncatedSVD(n_components=n_components, random_state=42)
-                dummy_matrix = np.diag(weights)
-                svd.fit(dummy_matrix)
-                transformed = svd.transform(dummy_matrix).sum(axis=1)
-                norm_weights = (transformed - transformed.min()) / (
-                    (transformed.max() - transformed.min()) + 1e-6
-                )
-            else:
-                max_w = weights.max() if len(weights) > 0 else 1.0
-                norm_weights = weights / (max_w + 1e-6)
-
-            cat_score_map = {cat: float(score) for cat, score in zip(categories, norm_weights)}
-        except Exception as svd_exc:
-            logger.debug("Falling back to weighted category scoring (%s)", svd_exc)
-            max_w = max(category_weights.values()) if category_weights else 1.0
-            cat_score_map = {cat: w / max_w for cat, w in category_weights.items()}
+        max_w = max(category_weights.values()) if category_weights else 1.0
+        cat_score_map = {cat: w / max_w for cat, w in category_weights.items()}
 
         product_cf_scores: dict[int, float] = {}
         for p in products:

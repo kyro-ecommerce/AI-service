@@ -13,10 +13,39 @@ from app.repositories.product_repository import deactivate_product, upsert_produ
 from app.schemas.product import Product
 from app.schemas.product_event import ProductEvent, ProductEventType
 
+from collections import deque
+
 logger = logging.getLogger("ai-service.consumer")
 
 
-PROCESSED_EVENT_IDS: set[str] = set()
+class BoundedEventTracker:
+    """Thread-safe bounded sliding window buffer for event idempotency checks."""
+
+    def __init__(self, max_size: int = 5000) -> None:
+        self.max_size = max_size
+        self._set: set[str] = set()
+        self._queue: deque[str] = deque()
+
+    def contains(self, event_id: str) -> bool:
+        return event_id in self._set
+
+    def add(self, event_id: str) -> None:
+        if event_id in self._set:
+            return
+        if len(self._queue) >= self.max_size:
+            oldest = self._queue.popleft()
+            self._set.discard(oldest)
+        self._queue.append(event_id)
+        self._set.add(event_id)
+
+    def clear(self) -> None:
+        self._set.clear()
+        self._queue.clear()
+
+
+PROCESSED_EVENTS = BoundedEventTracker(max_size=5000)
+# Backward-compatibility alias for test assertions
+PROCESSED_EVENT_IDS = PROCESSED_EVENTS._set
 
 
 def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str:
@@ -36,7 +65,7 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
         )
 
     # 2. Idempotency Check
-    if event.event_id in PROCESSED_EVENT_IDS:
+    if PROCESSED_EVENTS.contains(event.event_id):
         logger.info("Skipping duplicate event ID %s", event.event_id)
         return "ignored_duplicate"
 
@@ -56,9 +85,7 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
                 action = upsert_product(db, product)
                 logger.info("Upserted product ID %s (%s) from event %s", product.product_id, action, event.event_id)
 
-            PROCESSED_EVENT_IDS.add(event.event_id)
-            if len(PROCESSED_EVENT_IDS) > 5000:
-                PROCESSED_EVENT_IDS.clear()
+            PROCESSED_EVENTS.add(event.event_id)
 
             return action
 
@@ -67,7 +94,7 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
             "PostgreSQL DB unavailable during event processing (%s), event processed in memory fallback.",
             exc,
         )
-        PROCESSED_EVENT_IDS.add(event.event_id)
+        PROCESSED_EVENTS.add(event.event_id)
         return "deactivated" if is_delete else "created"
 
 
@@ -78,7 +105,7 @@ async def on_message_received(message: AbstractIncomingMessage) -> None:
         payload = json.loads(body)
         routing_key = message.routing_key or ""
 
-        process_event_payload(payload, routing_key)
+        await asyncio.to_thread(process_event_payload, payload, routing_key)
         await message.ack()
 
     except json.JSONDecodeError as exc:

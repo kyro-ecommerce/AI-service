@@ -15,8 +15,11 @@ def rerank_similar_candidates(
     limit: int = 5,
 ) -> RecommendationResponse:
     """Stage 2 Multi-Objective Re-ranker for Similar Products."""
-    target_text = build_content_text(target_product)
-    target_vector = generate_embedding(target_text)
+    target_vector = (
+        target_product.embedding
+        if target_product.embedding
+        else generate_embedding(build_content_text(target_product))
+    )
 
     target_brand = normalize_text(target_product.brand or "")
     target_keywords = set(normalize_text(target_product.title or "").split())
@@ -27,8 +30,11 @@ def rerank_similar_candidates(
         cand_brand = normalize_text(candidate.brand or "")
         cand_keywords = set(normalize_text(candidate.title or "").split())
 
-        candidate_text = build_content_text(candidate)
-        candidate_vector = generate_embedding(candidate_text)
+        candidate_vector = (
+            candidate.embedding
+            if candidate.embedding
+            else generate_embedding(build_content_text(candidate))
+        )
         sim_score = calculate_cosine_similarity(target_vector, candidate_vector)
 
         brand_boost = 0.15 if cand_brand and cand_brand == target_brand else 0.0
@@ -77,14 +83,20 @@ def rerank_accessory_candidates(
     limit: int = 5,
 ) -> RecommendationResponse:
     """Stage 2 Re-ranker for Accessory / Complementary Products."""
-    target_text = build_content_text(target_product)
-    target_vector = generate_embedding(target_text)
+    target_vector = (
+        target_product.embedding
+        if target_product.embedding
+        else generate_embedding(build_content_text(target_product))
+    )
 
     accessory_items: list[tuple[float, Product, str]] = []
 
     for candidate in candidates:
-        candidate_text = build_content_text(candidate)
-        candidate_vector = generate_embedding(candidate_text)
+        candidate_vector = (
+            candidate.embedding
+            if candidate.embedding
+            else generate_embedding(build_content_text(candidate))
+        )
         sim_score = calculate_cosine_similarity(target_vector, candidate_vector)
 
         rating_score = ((candidate.average_rating or 4.0) / 5.0) * 0.2
