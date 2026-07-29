@@ -237,14 +237,10 @@ def search_products(
     elif query_vector:
         vec_scored_products: list[tuple[float, Product]] = []
         for product in products:
-            product_text = build_content_text(product)
-            try:
-                prod_vector = generate_embedding(product_text)
-                sim = calculate_cosine_similarity(query_vector, prod_vector)
+            if product.embedding:
+                sim = calculate_cosine_similarity(query_vector, product.embedding)
                 if sim > 0.15:
                     vec_scored_products.append((sim, product))
-            except Exception:
-                pass
 
         vec_scored_products.sort(key=lambda x: -x[0])
         vec_ranks = {

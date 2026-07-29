@@ -78,8 +78,8 @@ async def generate_gemini_reply(
         f"DANH SÁCH SẢN PHẨM SẴN CÓ TRONG KHO HỆ THỐNG:\n{products_context}\n"
     )
 
-    models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"]
-    unique_models = list(dict.fromkeys(models_to_try))
+    models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-1.5-flash"]
+    unique_models = [m for m in dict.fromkeys(models_to_try) if m]
 
     payload = {
         "contents": [
@@ -92,7 +92,7 @@ async def generate_gemini_reply(
         ],
         "generationConfig": {
             "temperature": 0.3,
-            "maxOutputTokens": 2048,
+            "maxOutputTokens": 1024,
         },
     }
 
@@ -100,7 +100,7 @@ async def generate_gemini_reply(
         for model in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY.strip()}"
             try:
-                response = await client.post(url, json=payload)
+                response = await client.post(url, json=payload, timeout=3.5)
                 if response.status_code == 200:
                     res_data = response.json()
                     candidates = res_data.get("candidates", [])
@@ -109,15 +109,15 @@ async def generate_gemini_reply(
                         if parts:
                             return parts[0].get("text", "").strip()
                 else:
-                    logger.warning("Gemini model '%s' returned status %s: %s", model, response.status_code, response.text)
+                    logger.warning("Gemini model '%s' returned status %s", model, response.status_code)
             except Exception as exc:
-                logger.warning("Gemini model '%s' call failed (%s). Trying next fallback model...", model, exc)
+                logger.warning("Gemini model '%s' call failed (%s). Trying next model...", model, exc)
         return None
 
     if http_client is not None:
         return await _execute_post(http_client)
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=4.0) as client:
         return await _execute_post(client)
 
 
