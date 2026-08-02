@@ -4,7 +4,6 @@ sqlalchemy==2.0.36
 alembic==1.14.0
 psycopg[binary]==3.2.3
 pgvector==0.3.6
-sentence-transformers==3.3.1
 aio-pika==9.5.4
 pydantic-settings==2.7.1
 httpx==0.28.1
@@ -12,4 +11,10 @@ scikit-learn==1.6.0
 numpy==2.2.1
 scipy==1.15.0
 
+# ONNX Runtime Embedding (Option 1: replaces torch + sentence-transformers)
+onnxruntime==1.21.0
+optimum[onnxruntime]==1.24.0
+transformers>=4.46.0
 
+# Keep sentence-transformers as fallback (optional, can remove to save ~1GB Docker)
+sentence-transformers==3.3.1

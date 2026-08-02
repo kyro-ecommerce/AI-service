@@ -1,11 +1,16 @@
 import json
 import logging
 import re
+import time
 import unicodedata
+from dataclasses import dataclass, field
+from typing import Any
+
+import numpy as np
 
 from app.schemas.product import Product
 from app.schemas.search import SearchResult
-from app.services.embedding_service import generate_embedding
+from app.services.embedding_service import generate_embedding, VECTOR_DIMENSION
 from app.services.product_content import build_content_text, build_specs, build_tags
 
 logger = logging.getLogger("ai-service.search")
@@ -87,6 +92,129 @@ def extract_primary_category_intents(raw_query: str) -> set[str]:
     return intents
 
 
+# ---------------------------------------------------------------------------
+# Pre-computed Search Index (Option 3) — avoids re-tokenizing products per query
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _ProductIndexEntry:
+    """Pre-computed tokenized/normalized fields for a single product."""
+    product_id: int
+    norm_title: str
+    norm_cat: str
+    norm_tags: str
+    title_tokens: set[str]
+    cat_brand_tokens: set[str]
+    tag_tokens: set[str]
+    desc_tokens: set[str]
+    embedding: np.ndarray | None
+
+
+class SearchIndex:
+    """In-memory inverted index built once per product-list snapshot.
+
+    Caches normalized text, token sets, and the embedding matrix so that
+    per-query work is reduced to tokenizing the *query* only.
+    """
+
+    def __init__(self, products: list[Product]) -> None:
+        self._product_ids: list[int] = []
+        self._entries: dict[int, _ProductIndexEntry] = {}
+        self._embedding_matrix: np.ndarray | None = None
+        self._embedding_pid_order: list[int] = []
+        self._build(products)
+
+    # -- build -----------------------------------------------------------------
+
+    def _build(self, products: list[Product]) -> None:
+        embedding_rows: list[list[float]] = []
+        embedding_pids: list[int] = []
+
+        for product in products:
+            pid = product.product_id
+            self._product_ids.append(pid)
+
+            tags = build_tags(product)
+            norm_title = normalize_parts([product.title])
+            norm_cat = normalize_parts([product.category_name or ""])
+            norm_tags = normalize_parts(tags)
+
+            entry = _ProductIndexEntry(
+                product_id=pid,
+                norm_title=norm_title,
+                norm_cat=norm_cat,
+                norm_tags=norm_tags,
+                title_tokens=set(tokenize(product.title)),
+                cat_brand_tokens=set(tokenize(f"{product.category_name or ''} {product.brand or ''}")),
+                tag_tokens=set(tokenize(" ".join(tags))),
+                desc_tokens=set(
+                    tokenize(
+                        f"{product.description or ''} {product.detailed_review or ''} "
+                        f"{json.dumps(build_specs(product), ensure_ascii=False)}"
+                    )
+                ),
+                embedding=np.asarray(product.embedding, dtype=np.float32) if product.embedding else None,
+            )
+            self._entries[pid] = entry
+
+            if product.embedding:
+                embedding_rows.append(product.embedding)
+                embedding_pids.append(pid)
+
+        # Build dense embedding matrix for batch cosine similarity
+        if embedding_rows:
+            mat = np.asarray(embedding_rows, dtype=np.float32)
+            norms = np.linalg.norm(mat, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            self._embedding_matrix = mat / norms
+            self._embedding_pid_order = embedding_pids
+
+    # -- accessors -------------------------------------------------------------
+
+    def get_entry(self, product_id: int) -> _ProductIndexEntry | None:
+        return self._entries.get(product_id)
+
+    def batch_cosine_similarity(self, query_vector: list[float]) -> dict[int, float]:
+        """Compute cosine similarities for ALL indexed products in one NumPy matmul."""
+        if self._embedding_matrix is None or not query_vector:
+            return {}
+
+        qvec = np.asarray(query_vector, dtype=np.float32)
+        qnorm = np.linalg.norm(qvec)
+        if qnorm == 0:
+            return {}
+        qvec = qvec / qnorm
+
+        # Single matrix-vector multiplication → all similarities at once
+        sims = self._embedding_matrix @ qvec  # shape: (N,)
+
+        return {
+            pid: float(sim)
+            for pid, sim in zip(self._embedding_pid_order, sims)
+            if sim > 0.15
+        }
+
+
+# Global SearchIndex cache — rebuilt when product list identity changes
+_search_index_cache: tuple[int, SearchIndex] | None = None
+
+
+def _get_or_build_search_index(products: list[Product]) -> SearchIndex:
+    """Return cached SearchIndex or build a new one if the product list changed."""
+    global _search_index_cache
+
+    # Use id() of the list object as a cheap identity check;
+    # list_active_products_safe already caches the list for 30s,
+    # so the same list object is reused across concurrent requests.
+    list_id = id(products)
+    if _search_index_cache is not None and _search_index_cache[0] == list_id:
+        return _search_index_cache[1]
+
+    idx = SearchIndex(products)
+    _search_index_cache = (list_id, idx)
+    return idx
+
+
 def extract_budget_constraint(raw_query: str) -> float | None:
     norm_q = normalize_text(raw_query)
     match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:trieu|tr|m)\b", norm_q)
@@ -109,12 +237,33 @@ def calculate_keyword_score(
     query_tokens: list[str],
     raw_query: str = "",
     primary_intents: set[str] | None = None,
+    index_entry: _ProductIndexEntry | None = None,
 ) -> float:
     score = 0.0
     normalized_q = normalize_text(raw_query)
-    norm_title = normalize_parts([product.title])
-    norm_cat = normalize_parts([product.category_name or ""])
-    norm_tags = normalize_parts(build_tags(product))
+
+    # Use pre-computed index entry when available (Option 3 optimization)
+    if index_entry is not None:
+        norm_title = index_entry.norm_title
+        norm_cat = index_entry.norm_cat
+        norm_tags = index_entry.norm_tags
+        title_tokens = index_entry.title_tokens
+        cat_brand_tokens = index_entry.cat_brand_tokens
+        tag_tokens = index_entry.tag_tokens
+        desc_tokens = index_entry.desc_tokens
+    else:
+        # Fallback: compute on-the-fly (backward compatibility)
+        norm_title = normalize_parts([product.title])
+        norm_cat = normalize_parts([product.category_name or ""])
+        norm_tags = normalize_parts(build_tags(product))
+        title_tokens = set(tokenize(product.title))
+        cat_brand_tokens = set(tokenize(f"{product.category_name or ''} {product.brand or ''}"))
+        tag_tokens = set(tokenize(" ".join(build_tags(product))))
+        desc_tokens = set(
+            tokenize(
+                f"{product.description or ''} {product.detailed_review or ''} {json.dumps(build_specs(product), ensure_ascii=False)}"
+            )
+        )
 
     # Budget-aware scoring
     budget_max = extract_budget_constraint(raw_query)
@@ -152,17 +301,10 @@ def calculate_keyword_score(
 
     # 4. Exact Word Token matching (prevents substring mismatch like "on" in "phong")
     weighted_fields = [
-        (4, set(tokenize(product.title))),
-        (3, set(tokenize(f"{product.category_name or ''} {product.brand or ''}"))),
-        (3, set(tokenize(" ".join(build_tags(product))))),
-        (
-            1,
-            set(
-                tokenize(
-                    f"{product.description or ''} {product.detailed_review or ''} {json.dumps(build_specs(product), ensure_ascii=False)}"
-                )
-            ),
-        ),
+        (4, title_tokens),
+        (3, cat_brand_tokens),
+        (3, tag_tokens),
+        (1, desc_tokens),
     ]
 
     for token in query_tokens:
@@ -174,17 +316,20 @@ def calculate_keyword_score(
 
 
 def calculate_cosine_similarity(v1: list[float], v2: list[float]) -> float:
+    """NumPy-accelerated cosine similarity (Option 2 optimization)."""
     if not v1 or not v2 or len(v1) != len(v2):
         return 0.0
 
-    dot = sum(a * b for a, b in zip(v1, v2))
-    norm_a = sum(a * a for a in v1) ** 0.5
-    norm_b = sum(b * b for b in v2) ** 0.5
+    a = np.asarray(v1, dtype=np.float32)
+    b = np.asarray(v2, dtype=np.float32)
+
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
 
     if norm_a == 0 or norm_b == 0:
         return 0.0
 
-    return float(dot / (norm_a * norm_b))
+    return float(np.dot(a, b) / (norm_a * norm_b))
 
 
 def search_products(
@@ -195,6 +340,7 @@ def search_products(
 ) -> list[SearchResult]:
     """Hybrid Search using Reciprocal Rank Fusion (RRF) with RRF_K=60 and Multi-Category Intent Guardrails.
     
+    Optimized with SearchIndex (pre-computed tokens) and NumPy batch cosine similarity.
     Supports DB HNSW vector index candidates for O(top_k) speed, with in-memory vector fallback when DB is absent.
     """
     if not products or not query.strip():
@@ -204,6 +350,9 @@ def search_products(
     query_tokens = tokenize(query)
     primary_intents = extract_primary_category_intents(query)
 
+    # Build or reuse pre-computed search index (Option 3)
+    search_index = _get_or_build_search_index(products)
+
     query_vector: list[float] = []
     if db_vec_candidates is None:
         try:
@@ -211,14 +360,16 @@ def search_products(
         except Exception as exc:
             logger.warning("Could not generate query embedding for query '%s': %s", query, exc)
 
-    # Step 1: Calculate Keyword Scores
+    # Step 1: Calculate Keyword Scores (using pre-computed index entries)
     kw_scored_products: list[tuple[float, Product]] = []
     for product in products:
+        index_entry = search_index.get_entry(product.product_id)
         kw_score = calculate_keyword_score(
             product,
             query_tokens,
             raw_query=query,
             primary_intents=primary_intents,
+            index_entry=index_entry,
         )
         if kw_score > 0:
             kw_scored_products.append((kw_score, product))
@@ -228,24 +379,17 @@ def search_products(
         prod.product_id: rank for rank, (_, prod) in enumerate(kw_scored_products, start=1)
     }
 
-    # Step 2: Vector Ranks (Use DB HNSW index candidates if available, else in-memory fallback)
+    # Step 2: Vector Ranks (Use DB HNSW index candidates if available, else batch NumPy fallback)
     vec_ranks: dict[int, int] = {}
     if db_vec_candidates is not None:
         for rank, (prod, sim) in enumerate(db_vec_candidates, start=1):
             if sim > 0.15:
                 vec_ranks[prod.product_id] = rank
     elif query_vector:
-        vec_scored_products: list[tuple[float, Product]] = []
-        for product in products:
-            if product.embedding:
-                sim = calculate_cosine_similarity(query_vector, product.embedding)
-                if sim > 0.15:
-                    vec_scored_products.append((sim, product))
-
-        vec_scored_products.sort(key=lambda x: -x[0])
-        vec_ranks = {
-            prod.product_id: rank for rank, (_, prod) in enumerate(vec_scored_products, start=1)
-        }
+        # Option 2: Batch NumPy cosine similarity — single matmul instead of per-product loop
+        sim_map = search_index.batch_cosine_similarity(query_vector)
+        sorted_sims = sorted(sim_map.items(), key=lambda x: -x[1])
+        vec_ranks = {pid: rank for rank, (pid, _) in enumerate(sorted_sims, start=1)}
 
 
     # Step 3: Reciprocal Rank Fusion (RRF)
@@ -265,11 +409,18 @@ def search_products(
         if pid in vec_ranks:
             rrf_score += 1.0 / (RRF_K + vec_ranks[pid])
 
-        # Apply Multi-Category Intent Guardrails
+        # Apply Multi-Category Intent Guardrails (using pre-computed index entries)
         if primary_intents:
-            norm_cat = normalize_parts([product.category_name or ""])
-            norm_title = normalize_parts([product.title])
-            norm_tags = normalize_parts(build_tags(product))
+            entry = search_index.get_entry(pid)
+            if entry is not None:
+                norm_cat = entry.norm_cat
+                norm_title = entry.norm_title
+                norm_tags = entry.norm_tags
+            else:
+                norm_cat = normalize_parts([product.category_name or ""])
+                norm_title = normalize_parts([product.title])
+                norm_tags = normalize_parts(build_tags(product))
+
             if norm_cat in primary_intents or any(intent in norm_title or intent in norm_tags for intent in primary_intents):
                 rrf_score *= 1.3
             else:

@@ -8,3 +8,5 @@ venv/
 .ruff_cache/
 *.log
 
+# ONNX model cache (auto-downloaded on first run)
+models/
