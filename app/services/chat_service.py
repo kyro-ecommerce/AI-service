@@ -1,10 +1,11 @@
 import asyncio
-import httpx
 import logging
+import re
+import httpx
 from sqlalchemy.orm import Session
 
 
-from app.core.config import GEMINI_API_KEY, GEMINI_MODEL
+from app.core.config import GEMINI_API_KEY, GEMINI_MODEL, OPENROUTER_API_KEY, OPENROUTER_MODEL
 from app.repositories.product_repository import list_active_products_safe
 from app.schemas.chat import ChatResponse, RecommendedProductSummary
 from app.schemas.search import SearchResult
@@ -69,9 +70,10 @@ async def generate_gemini_reply(
     system_prompt = (
         "Bạn là Trợ lý AI Tư vấn Mua sắm Công nghệ thân thiện và chuyên nghiệp của Kyro Store.\n\n"
         "1. PHONG CÁCH GIAO TIẾP & TRÒ CHUYỆN (CONVERSATIONAL STYLE):\n"
-        "   - Hãy trả lời tự nhiên, lịch sự, đầy đủ câu từ, tuyệt đối không được ngắt câu giữa chừng.\n"
+        "   - Hãy trả lời tự nhiên, lịch sự, đầy đủ câu từ bằng tiếng Việt.\n"
         "   - Nếu khách hàng chào hỏi (ví dụ: 'hi', 'hello', 'chào shop'), hãy chào lại lịch sự, tự nhiên và hỏi xem khách đang cần tư vấn thiết bị nào.\n"
-        "   - Nếu khách hỏi thông tin ngân sách (ví dụ: 'mình có 14 triệu mua laptop'), hãy đối chiếu với danh sách kho bên dưới. Nếu trong kho có sản phẩm vừa tầm giá, hãy tư vấn sản phẩm đó. Nếu sản phẩm trong kho có giá cao hơn ngân sách của khách, hãy lịch sự thông báo mức giá khởi điểm của dòng sản phẩm đó trong kho và tư vấn giải pháp phù hợp.\n\n"
+        "   - Nếu khách hàng hỏi các câu hỏi kiến thức chung, phép tính toán học hoặc câu hỏi ngoài lề (ví dụ: '1+1 bằng bao nhiêu', 'thời tiết', 'bạn là ai'), hãy trả lời ngắn gọn, chính xác câu hỏi đó trước, sau đó lịch sự hỏi xem khách có cần tư vấn dòng Laptop, Điện thoại hay Phụ kiện nào tại Kyro Store không.\n"
+        "   - Nếu khách hỏi thông tin ngân sách (ví dụ: 'mình có 14 triệu mua laptop'), hãy đối chiếu với danh sách kho bên dưới để tư vấn dòng sản phẩm phù hợp.\n\n"
         "2. QUY TẮC KÈM LINK CHI TIẾT SẢN PHẨM (MANDATORY LINKING RULES):\n"
         "   - Mỗi khi nhắc tới tên một sản phẩm cụ thể có trong danh sách kho bên dưới, bạn BẮT BUỘC phải viết dưới dạng Markdown link: [Tên Sản Phẩm](/product/ID) (Ví dụ: [iPhone 15 Pro Max](/product/1)).\n"
         "   - CHỈ tư vấn và đưa thông số/giá tiền của sản phẩm có mặt trong DANH SÁCH KHO bên dưới. Không tự bịa thông số hay giá tiền sai thực tế.\n\n"
@@ -80,6 +82,8 @@ async def generate_gemini_reply(
 
     models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-1.5-flash"]
     unique_models = [m for m in dict.fromkeys(models_to_try) if m]
+
+
 
     payload = {
         "contents": [
@@ -100,7 +104,7 @@ async def generate_gemini_reply(
         for model in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY.strip()}"
             try:
-                response = await client.post(url, json=payload, timeout=2.0)
+                response = await client.post(url, json=payload, timeout=6.0)
                 if response.status_code == 200:
                     res_data = response.json()
                     candidates = res_data.get("candidates", [])
@@ -108,8 +112,10 @@ async def generate_gemini_reply(
                         parts = candidates[0].get("content", {}).get("parts", [])
                         if parts:
                             return parts[0].get("text", "").strip()
+                elif response.status_code == 429:
+                    logger.warning("Gemini model '%s' returned HTTP 429 (Quota Exceeded / Rate Limit).", model)
                 else:
-                    logger.warning("Gemini model '%s' returned status %s", model, response.status_code)
+                    logger.warning("Gemini model '%s' returned status %s: %s", model, response.status_code, response.text[:200])
             except Exception as exc:
                 logger.warning("Gemini model '%s' call failed (%s). Trying next model...", model, exc)
         return None
@@ -117,7 +123,68 @@ async def generate_gemini_reply(
     if http_client is not None:
         return await _execute_post(http_client)
 
-    async with httpx.AsyncClient(timeout=4.0) as client:
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        return await _execute_post(client)
+
+
+async def generate_openrouter_reply(
+    user_message: str,
+    products_context: str,
+    http_client: httpx.AsyncClient | None = None,
+) -> str | None:
+    """Invoke OpenRouter REST API asynchronously as a secondary LLM provider failover."""
+    if not OPENROUTER_API_KEY.strip():
+        return None
+
+    system_prompt = (
+        "Bạn là Trợ lý AI Tư vấn Mua sắm Công nghệ thân thiện và chuyên nghiệp của Kyro Store.\n\n"
+        "1. PHONG CÁCH GIAO TIẾP & TRÒ CHUYỆN:\n"
+        "   - Hãy trả lời tự nhiên, lịch sự bằng tiếng Việt.\n"
+        "   - Nếu khách hàng hỏi các câu hỏi kiến thức chung, phép tính toán học (như 1+1=2) hoặc ngoài lề, hãy trả lời chính xác và thân thiện trước, sau đó hỏi xem khách có cần hỗ trợ tư vấn thiết bị tại Kyro Store không.\n\n"
+        "2. QUY TẮC KÈM LINK SẢN PHẨM:\n"
+        "   - Mỗi khi nhắc tới tên một sản phẩm cụ thể có trong danh sách kho bên dưới, bạn BẮT BUỘC phải viết dưới dạng Markdown link: [Tên Sản Phẩm](/product/ID).\n\n"
+        f"DANH SÁCH SẢN PHẨM SẴN CÓ TRONG KHO HỆ THỐNG:\n{products_context}\n"
+    )
+
+    models_to_try = [OPENROUTER_MODEL, "deepseek/deepseek-chat", "meta-llama/llama-3.3-70b-instruct", "openai/gpt-4o-mini"]
+    unique_models = [m for m in dict.fromkeys(models_to_try) if m]
+
+    async def _execute_post(client: httpx.AsyncClient) -> str | None:
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY.strip()}",
+            "HTTP-Referer": "https://kyrostore.com",
+            "X-Title": "Kyro Store AI",
+            "Content-Type": "application/json",
+        }
+        for model in unique_models:
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                "temperature": 0.3,
+                "max_tokens": 1024,
+            }
+            try:
+                response = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=6.0)
+                if response.status_code == 200:
+                    res_data = response.json()
+                    choices = res_data.get("choices", [])
+                    if choices:
+                        msg = choices[0].get("message", {}).get("content", "")
+                        if msg:
+                            return msg.strip()
+                else:
+                    logger.warning("OpenRouter model '%s' returned status %s: %s", model, response.status_code, response.text[:200])
+            except Exception as exc:
+                logger.warning("OpenRouter model '%s' call failed (%s). Trying next model...", model, exc)
+        return None
+
+    if http_client is not None:
+        return await _execute_post(http_client)
+
+    async with httpx.AsyncClient(timeout=8.0) as client:
         return await _execute_post(client)
 
 
@@ -127,11 +194,44 @@ def generate_fallback_reply(
     has_category_mismatch: bool = False,
     is_greeting: bool = False,
 ) -> str:
-    """Deterministic, natural Vietnamese AI shopping advice fallback when LLM API key is absent or offline."""
+    """Deterministic, natural Vietnamese AI shopping advice fallback when LLM API keys are absent or offline."""
     if is_greeting:
         return (
             "Xin chào bạn! 🖐️ Rất vui được hỗ trợ bạn tại Kyro Store.\n\n"
             "Mình là Trợ lý AI tư vấn công nghệ. Hôm nay bạn đang muốn tìm hiểu hay cần tư vấn dòng sản phẩm Laptop, Điện thoại hay Phụ kiện nào không?"
+        )
+
+    # Detect math questions (e.g., 1+1, 2 * 5) in offline fallback mode
+    math_match = re.search(r"(\d+)\s*([\+\-\*\/])\s*(\d+)", user_message)
+    if math_match:
+        try:
+            n1 = int(math_match.group(1))
+            op = math_match.group(2)
+            n2 = int(math_match.group(3))
+            res_val = n1 + n2 if op == "+" else (n1 - n2 if op == "-" else (n1 * n2 if op == "*" else (n1 // n2 if n2 != 0 else "không xác định")))
+            return (
+                f"Kết quả phép tính: **{n1} {op} {n2} = {res_val}** 🧮\n\n"
+                "Nếu bạn cần tư vấn tìm mua thiết bị công nghệ như Laptop, Điện thoại hay Phụ kiện tại Kyro Store, cứ cho mình biết nhé!"
+            )
+        except Exception:
+            pass
+
+    from app.services.search_service import CATEGORY_SYNONYMS, extract_primary_category_intents, normalize_text
+    intents = extract_primary_category_intents(user_message)
+    norm_q = normalize_text(user_message)
+
+    COMMON_NON_PRODUCT_WORDS = {"bang", "bao", "nhieu", "nhu", "the", "nao", "la", "gi", "co", "khong", "mua", "ban", "gia", "duoc", "hay"}
+    query_words = [w for w in norm_q.split() if len(w) >= 3 and w not in COMMON_NON_PRODUCT_WORDS]
+
+    has_tech_intent = bool(intents) or any(cat in norm_q for cat in CATEGORY_SYNONYMS) or any(
+        res for res in search_results if any(w in normalize_text(res.title) for w in query_words)
+    )
+
+    if not has_tech_intent:
+        search_results.clear()
+        return (
+            "Chào bạn! Rất tiếc hiện tại mình chưa hiểu rõ nhu cầu tư vấn mua sắm này của bạn. "
+            "Bạn có thể nhập tên sản phẩm, thương hiệu hoặc nhu cầu (ví dụ: 'laptop gaming', 'điện thoại dưới 15 triệu', 'tai nghe bluetooth') để mình hỗ trợ tốt nhất nhé!"
         )
 
     if not search_results:
@@ -170,7 +270,6 @@ def generate_fallback_reply(
     return "\n\n".join(reply_parts)
 
 
-
 async def process_chat_consultation(
     message: str,
     limit: int = 4,
@@ -178,7 +277,7 @@ async def process_chat_consultation(
     user_id: int = 0,
     http_client: httpx.AsyncClient | None = None,
 ) -> ChatResponse:
-    """Main RAG Chat Pipeline combining Intent Recognition, Hybrid Search, and LLM/Fallback generation."""
+    """Main RAG Chat Pipeline combining Intent Recognition, Hybrid Search, and Multi-Provider LLM/Fallback generation."""
     from app.repositories.user_interaction_repository import record_user_interaction
     from app.services.search_service import extract_primary_category_intents, normalize_parts, normalize_text
 
@@ -223,12 +322,23 @@ async def process_chat_consultation(
             has_category_mismatch = True
 
     products_context = format_products_context(search_results)
+    
+    # 1st Priority: Google Gemini 2.0 Flash
     reply = await generate_gemini_reply(
         user_message=message,
         products_context=products_context,
         http_client=http_client,
     )
 
+    # 2nd Priority: OpenRouter Failover (DeepSeek / Llama / GPT-4o-mini)
+    if not reply:
+        reply = await generate_openrouter_reply(
+            user_message=message,
+            products_context=products_context,
+            http_client=http_client,
+        )
+
+    # 3rd Priority: Smart Deterministic Fallback (Offline Mode / Rule-based)
     if not reply:
         if store_qa_answer:
             reply = store_qa_answer

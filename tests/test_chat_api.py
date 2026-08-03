@@ -35,6 +35,35 @@ class ChatAPITest(unittest.TestCase):
         self.assertIn("reply", data)
         self.assertLessEqual(len(data["recommended_products"]), 2)
 
+    def test_chat_api_greeting(self) -> None:
+        response = client.post(
+            "/api/v1/ai/chat",
+            json={"message": "xin chào shop", "limit": 2},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("reply", data)
+        self.assertEqual(len(data["recommended_products"]), 0)
+
+    def test_chat_api_store_qa(self) -> None:
+        response = client.post(
+            "/api/v1/ai/chat",
+            json={"message": "chính sách bảo hành như thế nào?", "limit": 2},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("reply", data)
+        self.assertIn("bảo hành", data["reply"].lower())
+
+    def test_chat_api_category_mismatch(self) -> None:
+        response = client.post(
+            "/api/v1/ai/chat",
+            json={"message": "shop có bán tủ lạnh không?", "limit": 2},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("reply", data)
+
     def test_chat_api_invalid_limit(self) -> None:
         response = client.post(
             "/api/v1/ai/chat",
@@ -43,6 +72,18 @@ class ChatAPITest(unittest.TestCase):
         # Should return 422 Unprocessable Entity due to Pydantic validation (ge=1)
         self.assertEqual(response.status_code, 422)
 
+    def test_chat_api_offtopic_math_question(self) -> None:
+        response = client.post(
+            "/api/v1/ai/chat",
+            json={"message": "1+1 bằng bao nhiêu?", "limit": 2},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("reply", data)
+        self.assertIn("2", data["reply"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
