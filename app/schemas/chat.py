@@ -3,8 +3,9 @@ from pydantic import BaseModel, Field
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User question or purchase consultation request", min_length=1)
-    limit: int = Field(default=4, ge=1, le=10, description="Max number of recommended products")
+    limit: int = Field(default=6, ge=1, le=10, description="Max number of recommended products")
     user_id: int | None = Field(default=0, description="Optional user ID for personalized history")
+
 
 
 

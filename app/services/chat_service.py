@@ -61,6 +61,7 @@ def get_store_qa_response(normalized_msg: str) -> str | None:
 async def generate_gemini_reply(
     user_message: str,
     products_context: str,
+    user_profile_context: str = "",
     http_client: httpx.AsyncClient | None = None,
 ) -> str | None:
     """Invoke Google Gemini REST API asynchronously with resilient model cascade."""
@@ -77,13 +78,12 @@ async def generate_gemini_reply(
         "2. QUY TẮC KÈM LINK CHI TIẾT SẢN PHẨM (MANDATORY LINKING RULES):\n"
         "   - Mỗi khi nhắc tới tên một sản phẩm cụ thể có trong danh sách kho bên dưới, bạn BẮT BUỘC phải viết dưới dạng Markdown link: [Tên Sản Phẩm](/product/ID) (Ví dụ: [iPhone 15 Pro Max](/product/1)).\n"
         "   - CHỈ tư vấn và đưa thông số/giá tiền của sản phẩm có mặt trong DANH SÁCH KHO bên dưới. Không tự bịa thông số hay giá tiền sai thực tế.\n\n"
+        f"{user_profile_context}"
         f"DANH SÁCH SẢN PHẨM SẴN CÓ TRONG KHO HỆ THỐNG:\n{products_context}\n"
     )
 
     models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-1.5-flash"]
     unique_models = [m for m in dict.fromkeys(models_to_try) if m]
-
-
 
     payload = {
         "contents": [
@@ -130,6 +130,7 @@ async def generate_gemini_reply(
 async def generate_openrouter_reply(
     user_message: str,
     products_context: str,
+    user_profile_context: str = "",
     http_client: httpx.AsyncClient | None = None,
 ) -> str | None:
     """Invoke OpenRouter REST API asynchronously as a secondary LLM provider failover."""
@@ -143,6 +144,7 @@ async def generate_openrouter_reply(
         "   - Nếu khách hàng hỏi các câu hỏi kiến thức chung, phép tính toán học (như 1+1=2) hoặc ngoài lề, hãy trả lời chính xác và thân thiện trước, sau đó hỏi xem khách có cần hỗ trợ tư vấn thiết bị tại Kyro Store không.\n\n"
         "2. QUY TẮC KÈM LINK SẢN PHẨM:\n"
         "   - Mỗi khi nhắc tới tên một sản phẩm cụ thể có trong danh sách kho bên dưới, bạn BẮT BUỘC phải viết dưới dạng Markdown link: [Tên Sản Phẩm](/product/ID).\n\n"
+        f"{user_profile_context}"
         f"DANH SÁCH SẢN PHẨM SẴN CÓ TRONG KHO HỆ THỐNG:\n{products_context}\n"
     )
 
@@ -272,13 +274,13 @@ def generate_fallback_reply(
 
 async def process_chat_consultation(
     message: str,
-    limit: int = 4,
+    limit: int = 6,
     db: Session | None = None,
     user_id: int = 0,
     http_client: httpx.AsyncClient | None = None,
 ) -> ChatResponse:
-    """Main RAG Chat Pipeline combining Intent Recognition, Hybrid Search, and Multi-Provider LLM/Fallback generation."""
-    from app.repositories.user_interaction_repository import record_user_interaction
+    """Main RAG Chat Pipeline combining Intent Recognition, Hybrid Search, User Personalization, and Multi-Provider LLM/Fallback generation."""
+    from app.repositories.user_interaction_repository import get_user_recent_intents, record_user_interaction
     from app.services.search_service import extract_primary_category_intents, normalize_parts, normalize_text
 
     norm_msg = normalize_text(message)
@@ -301,6 +303,7 @@ async def process_chat_consultation(
 
     primary_intents = extract_primary_category_intents(message)
 
+    user_profile_context = ""
     if user_id and user_id > 0 and db is not None:
         await asyncio.to_thread(
             record_user_interaction,
@@ -310,6 +313,13 @@ async def process_chat_consultation(
             query_text=message,
             category_intents=primary_intents,
         )
+        recent_intents = await asyncio.to_thread(get_user_recent_intents, db, user_id)
+        if recent_intents:
+            intents_str = ", ".join(sorted(recent_intents))
+            user_profile_context = (
+                f"THÔNG TIN SỞ THÍCH GẦN ĐÂY CỦA KHÁCH HÀNG: Khách hàng thường quan tâm đến các danh mục/thương hiệu: {intents_str}. "
+                f"Ưu tiên tư vấn các sản phẩm phù hợp với sở thích này nếu sẵn có trong kho.\n\n"
+            )
 
     has_category_mismatch = False
     if primary_intents and search_results:
@@ -327,6 +337,7 @@ async def process_chat_consultation(
     reply = await generate_gemini_reply(
         user_message=message,
         products_context=products_context,
+        user_profile_context=user_profile_context,
         http_client=http_client,
     )
 
@@ -335,6 +346,7 @@ async def process_chat_consultation(
         reply = await generate_openrouter_reply(
             user_message=message,
             products_context=products_context,
+            user_profile_context=user_profile_context,
             http_client=http_client,
         )
 
@@ -349,6 +361,7 @@ async def process_chat_consultation(
                 has_category_mismatch=has_category_mismatch,
                 is_greeting=is_greeting,
             )
+
 
     recommended_summaries = (
         [] if (is_greeting or store_qa_answer) else [
