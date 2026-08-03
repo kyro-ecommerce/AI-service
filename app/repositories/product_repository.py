@@ -124,7 +124,14 @@ def list_active_products_safe(db: Session = None) -> tuple[list[Product], str]:
                 prod["category_name"] = prod["category"]
             if "original_price" not in prod and "price" in prod:
                 prod["original_price"] = int(prod["price"])
-            fallback_products.append(Product(**prod))
+            p_obj = Product(**prod)
+            if not p_obj.embedding:
+                try:
+                    p_obj.embedding = generate_embedding(build_content_text(p_obj))
+                except Exception:
+                    pass
+            fallback_products.append(p_obj)
+
         result = ([p for p in fallback_products if p.is_active], "fallback_json")
 
     if result is None:
