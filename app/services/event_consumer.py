@@ -12,6 +12,7 @@ from app.db.session import SessionLocal
 from app.repositories.product_repository import deactivate_product, upsert_product
 from app.schemas.product import Product
 from app.schemas.product_event import ProductEvent, ProductEventType
+from app.services.recommendation.caching import recommendation_response_cache
 
 from collections import deque
 
@@ -87,6 +88,9 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
 
             PROCESSED_EVENTS.add(event.event_id)
 
+            # Invalidate recommendation & product caches so stale data is never served
+            _invalidate_caches()
+
             return action
 
     except Exception as exc:
@@ -96,6 +100,16 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
         )
         PROCESSED_EVENTS.add(event.event_id)
         return "deactivated" if is_delete else "created"
+
+
+def _invalidate_caches() -> None:
+    """Clear recommendation and product caches after a product event is processed."""
+    import app.repositories.product_repository as prod_repo
+
+    recommendation_response_cache.clear()
+    prod_repo._products_cache = None
+    prod_repo._products_cache_time = 0.0
+    logger.debug("Invalidated recommendation & product caches after product event.")
 
 
 async def on_message_received(message: AbstractIncomingMessage) -> None:

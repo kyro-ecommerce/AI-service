@@ -82,8 +82,21 @@ class ChatAPITest(unittest.TestCase):
         self.assertIn("reply", data)
         self.assertIn("2", data["reply"])
 
+    def test_chat_stream_api_success(self) -> None:
+        response = client.post(
+            "/api/v1/ai/chat/stream",
+            json={"message": "Tư vấn cho mình laptop 16GB RAM", "limit": 3},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/event-stream", response.headers.get("content-type", ""))
+        content = response.text
+        self.assertIn("data: ", content)
+        self.assertIn('"type": "metadata"', content)
+        self.assertIn('"type": "done"', content)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

@@ -128,6 +128,84 @@ async def generate_gemini_reply(
         return await _execute_post(client)
 
 
+async def stream_gemini_reply(
+    user_message: str,
+    products_context: str,
+    user_profile_context: str = "",
+    http_client: httpx.AsyncClient | None = None,
+):
+    """Stream response tokens from Google Gemini REST API using Server-Sent Events (SSE)."""
+    if not GEMINI_API_KEY.strip():
+        return
+
+    system_prompt = (
+        "Bạn là Trợ lý AI Tư vấn Mua sắm Công nghệ thân thiện và chuyên nghiệp của Kyro Store.\n\n"
+        "1. PHONG CÁCH GIAO TIẾP & TRÒ CHUYỆN (CONVERSATIONAL STYLE):\n"
+        "   - Hãy trả lời tự nhiên, lịch sự, đầy đủ câu từ bằng tiếng Việt.\n"
+        "   - Nếu khách hàng chào hỏi (ví dụ: 'hi', 'hello', 'chào shop'), hãy chào lại lịch sự, tự nhiên và hỏi xem khách đang cần tư vấn thiết bị nào.\n"
+        "   - Nếu khách hàng hỏi các câu hỏi kiến thức chung, phép tính toán học hoặc câu hỏi ngoài lề, hãy trả lời ngắn gọn, chính xác trước, sau đó hỏi xem khách có cần tư vấn thiết bị tại Kyro Store không.\n\n"
+        "2. QUY TẮC KÈM LINK CHI TIẾT SẢN PHẨM (MANDATORY LINKING RULES):\n"
+        "   - Mỗi khi nhắc tới tên một sản phẩm cụ thể có trong danh sách kho bên dưới, bạn BẮT BUỘC phải viết dưới dạng Markdown link: [Tên Sản Phẩm](/product/ID).\n"
+        "   - CHỈ tư vấn và đưa thông số/giá tiền của sản phẩm có mặt trong DANH SÁCH KHO bên dưới.\n\n"
+        f"{user_profile_context}"
+        f"DANH SÁCH SẢN PHẨM SẴN CÓ TRONG KHO HỆ THỐNG:\n{products_context}\n"
+    )
+
+    models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+    unique_models = [m for m in dict.fromkeys(models_to_try) if m]
+
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": f"{system_prompt}\nLời nhắn của khách hàng: {user_message}"}
+                ],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 1024,
+        },
+    }
+
+    client_to_use = http_client if http_client is not None else httpx.AsyncClient(timeout=15.0)
+    should_close = http_client is None
+
+    try:
+        for model in unique_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse&key={GEMINI_API_KEY.strip()}"
+            try:
+                async with client_to_use.stream("POST", url, json=payload) as response:
+                    if response.status_code == 200:
+                        import json
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                data_str = line[6:].strip()
+                                if data_str == "[DONE]":
+                                    break
+                                try:
+                                    data = json.loads(data_str)
+                                    candidates = data.get("candidates", [])
+                                    if candidates:
+                                        parts = candidates[0].get("content", {}).get("parts", [])
+                                        if parts and "text" in parts[0]:
+                                            text_chunk = parts[0]["text"]
+                                            if text_chunk:
+                                                yield text_chunk
+                                except Exception:
+                                    pass
+                        return
+                    else:
+                        logger.warning("Gemini stream model '%s' returned status %s", model, response.status_code)
+            except Exception as exc:
+                logger.warning("Gemini stream model '%s' failed: %s", model, exc)
+    finally:
+        if should_close:
+            await client_to_use.aclose()
+
+
+
 async def generate_openrouter_reply(
     user_message: str,
     products_context: str,
@@ -386,6 +464,125 @@ async def process_chat_consultation(
         recommended_products=recommended_summaries,
         source=source,
     )
+
+
+async def stream_chat_consultation(
+    message: str,
+    limit: int = 6,
+    db: Session | None = None,
+    user_id: int = 0,
+    http_client: httpx.AsyncClient | None = None,
+):
+    """Generator function that yields SSE formatted event strings for real-time chat streaming."""
+    import json
+    from app.repositories.user_interaction_repository import get_user_recent_intents, record_user_interaction
+    from app.services.search_service import extract_primary_category_intents, normalize_parts, normalize_text
+
+    norm_msg = normalize_text(message)
+    is_greeting = is_pure_greeting(norm_msg)
+    store_qa_answer = get_store_qa_response(norm_msg)
+
+    active_products, source = await asyncio.to_thread(list_active_products_safe, db)
+
+    search_results = []
+    if not is_greeting and not store_qa_answer:
+        search_results = await asyncio.to_thread(
+            search_products,
+            products=active_products,
+            query=message,
+            limit=limit,
+        )
+
+    primary_intents = extract_primary_category_intents(message)
+    user_profile_context = ""
+    if user_id and user_id > 0 and db is not None:
+        await asyncio.to_thread(
+            record_user_interaction,
+            db=db,
+            user_id=user_id,
+            interaction_type="CHAT",
+            query_text=message,
+            category_intents=primary_intents,
+        )
+        recent_intents = await asyncio.to_thread(get_user_recent_intents, db, user_id)
+        if recent_intents:
+            intents_str = ", ".join(sorted(recent_intents))
+            user_profile_context = (
+                f"THÔNG TIN SỞ THÍCH GẦN ĐÂY CỦA KHÁCH HÀNG: Khách hàng thường quan tâm đến các danh mục/thương hiệu: {intents_str}.\n\n"
+            )
+
+    has_category_mismatch = False
+    if primary_intents and search_results:
+        matched = any(
+            (res.category_name and normalize_parts([res.category_name]) in primary_intents)
+            or any(intent in normalize_parts([res.title]) for intent in primary_intents)
+            for res in search_results
+        )
+        if not matched:
+            has_category_mismatch = True
+
+    products_context = format_products_context(search_results)
+
+    recommended_summaries = (
+        [] if (is_greeting or store_qa_answer) else [
+            {
+                "product_id": res.product_id,
+                "title": res.title,
+                "category_id": res.category_id,
+                "category_name": res.category_name,
+                "brand": res.brand,
+                "original_price": res.original_price,
+                "discounted_price": res.discounted_price,
+                "average_rating": res.average_rating,
+                "image_url": res.image_url,
+            }
+            for res in search_results
+        ]
+    )
+
+    # 1. Send metadata payload first
+    metadata_evt = {
+        "type": "metadata",
+        "source": source,
+        "recommended_products": recommended_summaries,
+    }
+    yield f"data: {json.dumps(metadata_evt, ensure_ascii=False)}\n\n"
+
+    # 2. Try streaming from Gemini
+    has_streamed = False
+    async for chunk in stream_gemini_reply(
+        user_message=message,
+        products_context=products_context,
+        user_profile_context=user_profile_context,
+        http_client=http_client,
+    ):
+        if chunk:
+            has_streamed = True
+            evt = {"type": "chunk", "content": chunk}
+            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+
+    # 3. Fallback if streaming didn't produce chunks
+    if not has_streamed:
+        reply = await generate_openrouter_reply(
+            user_message=message,
+            products_context=products_context,
+            user_profile_context=user_profile_context,
+            http_client=http_client,
+        )
+        if not reply:
+            reply = store_qa_answer if store_qa_answer else generate_fallback_reply(
+                user_message=message,
+                search_results=search_results,
+                has_category_mismatch=has_category_mismatch,
+                is_greeting=is_greeting,
+            )
+
+        evt = {"type": "chunk", "content": reply}
+        yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+
+    # 4. Done event
+    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
 
 
 

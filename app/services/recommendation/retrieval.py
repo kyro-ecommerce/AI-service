@@ -59,18 +59,21 @@ def retrieve_candidates_for_accessories(
         )
     ]
 
-    if candidates:
+    if len(candidates) >= limit:
         return candidates[:limit]
 
-    # Fallback cross-category candidate selection: exclude same product ID, same title, and same category
-    return [
+    # Pad with other cross-category products when matched candidates are insufficient
+    matched_ids = {p.product_id for p in candidates}
+    fallback = [
         p
         for p in products
         if p.product_id != target_product.product_id
+        and p.product_id not in matched_ids
         and normalize_text(p.title or "") != target_title_norm
         and p.is_active
         and normalize_text(p.category_name or "") != target_cat_norm
-    ][:limit]
+    ]
+    return (candidates + fallback)[:limit]
 
 
 

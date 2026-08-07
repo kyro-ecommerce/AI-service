@@ -124,8 +124,8 @@ def recommend_trending_products(
 
     res = get_cached_recommendation(cache_key, _compute)
     if res is None:
-        candidates = retrieve_candidates_for_trending(products=products, limit=20)
-        return rerank_trending_candidates(candidates=candidates, limit=limit)
+        # Defensive fallback: should not occur since _compute always returns a response
+        return _compute()
     return res
 
 
