@@ -3,10 +3,27 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatFeedbackRequest, ChatFeedbackResponse, ChatRequest, ChatResponse
+from app.repositories.user_interaction_repository import record_chat_feedback
 from app.services.chat_service import process_chat_consultation, stream_chat_consultation
 
 router = APIRouter()
+
+
+@router.post("/chat/feedback", response_model=ChatFeedbackResponse)
+async def chat_feedback(
+    feedback_req: ChatFeedbackRequest,
+    db: Session = Depends(get_db),
+) -> ChatFeedbackResponse:
+    """Record explicit user feedback (thumbs_up / thumbs_down) on AI response."""
+    record_chat_feedback(
+        db=db,
+        user_id=feedback_req.user_id or 0,
+        message_text=feedback_req.message_text,
+        feedback=feedback_req.feedback,
+    )
+    return ChatFeedbackResponse()
+
 
 
 @router.post("/chat", response_model=ChatResponse)

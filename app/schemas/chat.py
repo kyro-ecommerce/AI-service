@@ -28,3 +28,15 @@ class ChatResponse(BaseModel):
     )
     source: str = Field(default="database", description="Data origin source: 'database' or 'fallback_json'")
 
+
+class ChatFeedbackRequest(BaseModel):
+    user_id: int | None = Field(default=0, description="Optional user ID")
+    message_text: str = Field(default="", description="Original user message")
+    feedback: str = Field(..., description="'thumbs_up' or 'thumbs_down'")
+
+
+class ChatFeedbackResponse(BaseModel):
+    status: str = "success"
+    message: str = "Cảm ơn bạn đã đóng góp ý kiến cho Trợ lý AI Kyro!"
+
+

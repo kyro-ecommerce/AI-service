@@ -86,3 +86,34 @@ def get_user_recent_intents(
         logger.warning("Could not fetch user recent intents for user %d (%s)", user_id, exc)
         return set()
 
+
+def record_chat_feedback(
+    db: Session | None,
+    user_id: int,
+    message_text: str,
+    feedback: str,
+) -> bool:
+    """Record explicit user feedback (thumbs_up / thumbs_down) for RLHF / quality tracking."""
+    if not db:
+        logger.info("Recorded feedback (no DB): feedback=%s, query='%s'", feedback, message_text)
+        return True
+
+    try:
+        interaction_type = "FEEDBACK_UP" if feedback == "thumbs_up" else "FEEDBACK_DOWN"
+        interaction = UserInteraction(
+            user_id=user_id if user_id and user_id > 0 else 0,
+            interaction_type=interaction_type,
+            query_text=message_text,
+            category_intents=[feedback],
+        )
+        db.add(interaction)
+        db.commit()
+        logger.info("Recorded feedback for user %d: %s on '%s'", user_id, feedback, message_text)
+        return True
+    except Exception as exc:
+        if db:
+            db.rollback()
+        logger.warning("Could not record chat feedback (%s)", exc)
+        return False
+
+

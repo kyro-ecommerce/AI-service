@@ -94,9 +94,19 @@ class ChatAPITest(unittest.TestCase):
         self.assertIn('"type": "metadata"', content)
         self.assertIn('"type": "done"', content)
 
+    def test_chat_feedback_api_success(self) -> None:
+        response = client.post(
+            "/api/v1/ai/chat/feedback",
+            json={"user_id": 1, "message_text": "Tư vấn laptop 16GB RAM", "feedback": "thumbs_up"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("status"), "success")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
