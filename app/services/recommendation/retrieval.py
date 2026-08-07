@@ -87,7 +87,26 @@ def retrieve_candidates_for_trending(
 
 def retrieve_candidates_for_personalized(
     products: list[Product],
+    user_intents: set[str] | None = None,
     limit: int = 50,
 ) -> list[Product]:
-    """Stage 1 Candidate Retrieval for Personalized Recommendations."""
-    return [p for p in products if p.is_active][:limit]
+    """Stage 1 Candidate Retrieval for Personalized Recommendations, prioritizing real-time user intents."""
+    from app.services.search_service import normalize_text
+
+    active = [p for p in products if p.is_active]
+    if not user_intents:
+        return active[:limit]
+
+    intent_candidates = []
+    other_candidates = []
+
+    for p in active:
+        cat_norm = normalize_text(p.category_name or "")
+        title_norm = normalize_text(p.title or "")
+        if any(intent in cat_norm or intent in title_norm for intent in user_intents):
+            intent_candidates.append(p)
+        else:
+            other_candidates.append(p)
+
+    return (intent_candidates + other_candidates)[:limit]
+

@@ -142,7 +142,8 @@ def recommend_personalized_products(
     user_intents = get_user_recent_intents(db, user_id)
     cf_scores = compute_user_collaborative_scores(user_id=user_id, products=products, db=db)
 
-    candidates = retrieve_candidates_for_personalized(products=products, limit=20)
+    candidates = retrieve_candidates_for_personalized(products=products, user_intents=user_intents, limit=20)
+
 
     return rerank_personalized_candidates(
         user_id=user_id,

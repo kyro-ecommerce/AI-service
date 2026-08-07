@@ -203,19 +203,20 @@ def rerank_personalized_candidates(
         score_before_multiplier = base_score + cf_boost
 
         if cf_score > 0.0 and matched_intent:
-            total_score = score_before_multiplier * 1.40
-            reason = f"Gợi ý cá nhân hóa cao từ mô hình lọc cộng tác & quan tâm {product.category_name or 'sản phẩm này'}"
+            total_score = score_before_multiplier * 1.50
+            reason = f"✨ Gợi ý thời gian thực từ lọc cộng tác & hành vi quan tâm {product.category_name or 'dòng sản phẩm này'}"
         elif cf_score > 0.0:
-            total_score = score_before_multiplier * 1.25
+            total_score = score_before_multiplier * 1.30
             reason = f"Gợi ý từ mô hình lọc cộng tác tương tác {product.category_name or 'sản phẩm'}"
         elif matched_intent:
-            total_score = score_before_multiplier * 1.35
-            reason = f"Gợi ý cá nhân hóa dựa trên lịch sử quan tâm đến {product.category_name or 'thiết bị này'}"
+            total_score = score_before_multiplier * 1.45
+            reason = f"✨ Gợi ý cá nhân hóa mới nhất theo hành vi truy cập {product.category_name or 'thiết bị này'}"
         else:
             total_score = base_score
             reason = f"Sản phẩm nổi bật với {rating:.1f}⭐ đánh giá tốt"
 
         scored_items.append((total_score, product, reason))
+
 
     scored_items.sort(key=lambda item: -item[0])
 

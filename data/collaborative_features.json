@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "trained_at": "2026-08-07T16:12:38.945289+00:00",
+    "trained_at": "2026-08-07T16:36:12.476874+00:00",
     "model_version": "2.0-batch-svd",
     "total_users_trained": 19,
     "decay_half_life_days": 7.0
