@@ -561,7 +561,7 @@ async def stream_chat_consultation(
             evt = {"type": "chunk", "content": chunk}
             yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
 
-    # 3. Fallback if streaming didn't produce chunks
+    # 3. Fallback if streaming didn't produce chunks (e.g. Gemini 429 Quota Limit or offline)
     if not has_streamed:
         reply = await generate_openrouter_reply(
             user_message=message,
@@ -577,11 +577,17 @@ async def stream_chat_consultation(
                 is_greeting=is_greeting,
             )
 
-        evt = {"type": "chunk", "content": reply}
-        yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        # Stream fallback reply word-by-word for continuous typewriter animation
+        words = reply.split(" ")
+        for idx, word in enumerate(words):
+            space = " " if idx < len(words) - 1 else ""
+            evt = {"type": "chunk", "content": word + space}
+            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.02)
 
     # 4. Done event
     yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
 
 
 
