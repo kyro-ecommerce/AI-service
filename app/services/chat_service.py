@@ -378,6 +378,7 @@ async def process_chat_consultation(
             products=active_products,
             query=message,
             limit=limit,
+            db=db,
         )
 
     primary_intents = extract_primary_category_intents(message)
@@ -491,6 +492,7 @@ async def stream_chat_consultation(
             products=active_products,
             query=message,
             limit=limit,
+            db=db,
         )
 
     primary_intents = extract_primary_category_intents(message)

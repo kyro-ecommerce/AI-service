@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import unicodedata
+from typing import Any
+
 
 from app.schemas.product import Product
 from app.schemas.search import SearchResult
@@ -192,6 +194,7 @@ def search_products(
     query: str,
     limit: int,
     db_vec_candidates: list[tuple[Product, float]] | None = None,
+    db: Any | None = None,
 ) -> list[SearchResult]:
     """Hybrid Search using Reciprocal Rank Fusion (RRF) with RRF_K=60 and Multi-Category Intent Guardrails.
     
@@ -210,6 +213,21 @@ def search_products(
             query_vector = generate_embedding(query)
         except Exception as exc:
             logger.warning("Could not generate query embedding for query '%s': %s", query, exc)
+
+    # Leverage Pgvector HNSW Index if DB Session is provided
+    if db is not None and db_vec_candidates is None and query_vector:
+        try:
+            from app.repositories.product_repository import search_vector_products_db, to_product_schema
+            raw_db_results = search_vector_products_db(db, query_vector, limit=limit * 3)
+            if raw_db_results:
+                db_vec_candidates = [
+                    (to_product_schema(ai_prod), sim)
+                    for ai_prod, sim in raw_db_results
+                ]
+                logger.debug("Retrieved %d candidates directly from Pgvector HNSW DB index.", len(db_vec_candidates))
+        except Exception as exc:
+            logger.warning("Pgvector DB query failed (%s). Falling back to in-memory vector search.", exc)
+
 
     # Step 1: Calculate Keyword Scores
     kw_scored_products: list[tuple[float, Product]] = []
