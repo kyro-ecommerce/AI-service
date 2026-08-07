@@ -50,25 +50,52 @@ PROCESSED_EVENT_IDS = PROCESSED_EVENTS._set
 
 
 def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str:
-    """Process a validated ProductEvent payload and sync changes into PostgreSQL DB with ordering guard."""
-    # 1. Validate contract using ProductEvent schema
+    """Process a validated ProductEvent or UserClickstreamEvent payload with idempotency check."""
+    event_id = payload.get("event_id", f"evt-{hash(str(payload))}")
+
+    # Idempotency Check
+    if PROCESSED_EVENTS.contains(event_id):
+        logger.info("Skipping duplicate event ID %s", event_id)
+        return "ignored_duplicate"
+
+    # Handle User Clickstream Behavioral Events (e.g. user.product.viewed, user.cart.added)
+    event_type_str = str(payload.get("event_type", ""))
+    if routing_key.startswith("user.") or event_type_str.startswith("User"):
+        user_id = payload.get("user_id", 0)
+        cat_name = payload.get("category_name") or payload.get("category") or ""
+        action_type = "VIEW" if "viewed" in routing_key.lower() or "viewed" in event_type_str.lower() else "CART"
+
+        if user_id and cat_name:
+            from app.repositories.user_interaction_repository import record_user_interaction
+            try:
+                with SessionLocal() as db:
+                    record_user_interaction(
+                        db=db,
+                        user_id=user_id,
+                        interaction_type=action_type,
+                        query_text=f"Realtime {action_type} for {cat_name}",
+                        category_intents=[cat_name],
+                    )
+                    logger.info("Processed real-time clickstream event for user %d: action=%s, category=%s", user_id, action_type, cat_name)
+            except Exception as exc:
+                logger.warning("Could not record clickstream event in DB: %s", exc)
+
+        PROCESSED_EVENTS.add(event_id)
+        _invalidate_caches()
+        return "user_clickstream_recorded"
+
+    # Handle Standard Product Lifecycle Events
     event: ProductEvent | None = None
     try:
         event = ProductEvent.model_validate(payload)
     except Exception:
-        # Fallback to direct dict parsing if event metadata fields are missing
         data = payload.get("data", payload)
         event_type = payload.get("event_type", ProductEventType.PRODUCT_UPDATED)
         event = ProductEvent(
-            event_id=payload.get("event_id", "evt-unknown"),
+            event_id=event_id,
             event_type=event_type,
             data=Product(**data),
         )
-
-    # 2. Idempotency Check
-    if PROCESSED_EVENTS.contains(event.event_id):
-        logger.info("Skipping duplicate event ID %s", event.event_id)
-        return "ignored_duplicate"
 
     product = event.data
 
@@ -87,10 +114,7 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
                 logger.info("Upserted product ID %s (%s) from event %s", product.product_id, action, event.event_id)
 
             PROCESSED_EVENTS.add(event.event_id)
-
-            # Invalidate recommendation & product caches so stale data is never served
             _invalidate_caches()
-
             return action
 
     except Exception as exc:
@@ -103,13 +127,13 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
 
 
 def _invalidate_caches() -> None:
-    """Clear recommendation and product caches after a product event is processed."""
+    """Clear recommendation and product caches after a product or clickstream event is processed."""
     import app.repositories.product_repository as prod_repo
 
     recommendation_response_cache.clear()
     prod_repo._products_cache = None
     prod_repo._products_cache_time = 0.0
-    logger.debug("Invalidated recommendation & product caches after product event.")
+    logger.debug("Invalidated recommendation & product caches after event.")
 
 
 async def on_message_received(message: AbstractIncomingMessage) -> None:
@@ -124,14 +148,11 @@ async def on_message_received(message: AbstractIncomingMessage) -> None:
 
     except json.JSONDecodeError as exc:
         logger.error("Malformed JSON payload in RabbitMQ message: %s. Sending to DLQ.", exc)
-        # Nack without requeue routes malformed messages to Dead Letter Queue
         await message.nack(requeue=False)
 
     except Exception as exc:
         logger.error("Failed to process RabbitMQ event message: %s. Requeuing for retry.", exc)
-        # Requeue temporary failures for retry
         await message.nack(requeue=True)
-
 
 
 async def start_event_consumer_loop(retry_interval: int = 5) -> None:
@@ -158,13 +179,14 @@ async def start_event_consumer_loop(retry_interval: int = 5) -> None:
 
                 queue = await channel.declare_queue(RABBITMQ_QUEUE, durable=True)
 
-                for routing_key in ["product.created", "product.updated", "product.deleted"]:
+                for routing_key in ["product.created", "product.updated", "product.deleted", "user.product.viewed", "user.cart.added", "user.order.completed"]:
                     await queue.bind(exchange, routing_key=routing_key)
 
                 logger.info("✅ AI Service RabbitMQ Consumer listening on queue '%s'", RABBITMQ_QUEUE)
                 await queue.consume(on_message_received)
 
                 # Keep connection alive while listening
+
                 while not connection.is_closed:
                     await asyncio.sleep(2)
 

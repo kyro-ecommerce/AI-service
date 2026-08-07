@@ -47,6 +47,21 @@ class EventConsumerTest(unittest.TestCase):
         action = process_event_payload(payload, routing_key="product.deleted")
         self.assertEqual(action, "deactivated")
 
+    @patch("app.services.event_consumer.SessionLocal")
+    def test_process_user_clickstream_event(self, mock_session: MagicMock) -> None:
+        payload = {
+            "event_id": "evt-003",
+            "event_type": "UserProductViewed",
+            "user_id": 1,
+            "product_id": 100,
+            "category_name": "laptop",
+            "occurred_at": "2026-08-07T12:00:00Z",
+        }
+
+        action = process_event_payload(payload, routing_key="user.product.viewed")
+        self.assertEqual(action, "user_clickstream_recorded")
+
 
 if __name__ == "__main__":
     unittest.main()
+
