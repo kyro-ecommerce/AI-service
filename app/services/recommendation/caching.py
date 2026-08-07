@@ -99,6 +99,10 @@ class RecommendationCache:
                 logger.warning("Failed to flush Redis: %s", exc)
         self._memory_store.clear()
 
+    def __len__(self) -> int:
+        return len(self._memory_store)
+
+
 
 # Global Cache Instances
 recommendation_response_cache = RecommendationCache(ttl_seconds=300, max_size=500)
