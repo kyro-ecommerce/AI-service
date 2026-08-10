@@ -82,7 +82,12 @@ def recommend_accessories(
     def _compute():
         target_product = find_product_by_id(products, target_product_id)
         if not target_product:
-            return None
+            target_product = Product(
+                product_id=target_product_id,
+                title="Sản phẩm công nghệ",
+                category_name="electronics",
+                is_active=True,
+            )
 
         target_cat = normalize_text(target_product.category_name or "")
         allowed_accessory_cats = None

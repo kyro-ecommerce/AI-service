@@ -9,6 +9,7 @@ class RecommendationItem(BaseModel):
     brand: str | None = None
     original_price: int | None = None
     discounted_price: int | None = None
+    discount_percent: int | None = None
     average_rating: float = 0
     image_url: str | None = None
     similarity_score: float = 0
