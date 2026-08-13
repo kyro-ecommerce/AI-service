@@ -14,6 +14,23 @@ from app.schemas.product import Product
 PRODUCTS_FILE = PROJECT_ROOT / "data" / "products.json"
 
 
+def infer_correct_category(title: str, current_cat: str) -> str:
+    title_lower = (title or "").lower()
+    if any(k in title_lower for k in ["laptop", "macbook", "notebook", "thinkpad", "rog", "nitro", "dell xps", "spectre"]):
+        return "laptop"
+    if any(k in title_lower for k in ["tai nghe", "airpods", "headphone", "headset"]):
+        return "headphone"
+    if any(k in title_lower for k in ["chuot", "mouse"]):
+        return "mouse"
+    if any(k in title_lower for k in ["sac", "powerbank", "power bank", "pin du phong", "sac du phong"]):
+        return "phu kien"
+    if any(k in title_lower for k in ["ipad", "tab ", "may tinh bang", "tablet"]):
+        return "tablet"
+    if any(k in title_lower for k in ["iphone", "xiaomi", "oppo", "samsung galaxy", "oneplus", "dien thoai", "phone"]):
+        return "phone"
+    return current_cat or "electronics"
+
+
 def normalize_legacy_product(raw_product: dict[str, Any], index: int) -> dict[str, Any]:
     product = dict(raw_product)
 
@@ -25,6 +42,9 @@ def normalize_legacy_product(raw_product: dict[str, Any], index: int) -> dict[st
 
     if "category_name" not in product and "category" in product:
         product["category_name"] = product["category"]
+
+    cat = product.get("category_name") or product.get("category") or ""
+    product["category_name"] = infer_correct_category(product.get("title", ""), cat)
 
     if "original_price" not in product and "price" in product:
         product["original_price"] = int(product["price"])

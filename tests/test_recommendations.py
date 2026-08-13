@@ -66,6 +66,41 @@ class RecommendationServiceTest(unittest.TestCase):
         self.assertIn("mouse", accessory_cats)
         self.assertIn("headphone", accessory_cats)
 
+    def test_recommend_similar_spec_matching_prioritizes_same_ram(self) -> None:
+        target_laptop = Product(
+            product_id=10,
+            title="Dell XPS 15",
+            category_name="laptop",
+            brand="Dell",
+            ram_capacity="32GB",
+            rom_capacity="1TB",
+            original_price=45000000,
+        )
+        cand_8gb = Product(
+            product_id=11,
+            title="Dell Vostro",
+            category_name="laptop",
+            brand="Dell",
+            ram_capacity="8GB",
+            rom_capacity="256GB",
+            original_price=15000000,
+        )
+        cand_32gb = Product(
+            product_id=12,
+            title="Dell Precision Workstation",
+            category_name="laptop",
+            brand="Dell",
+            ram_capacity="32GB",
+            rom_capacity="1TB",
+            original_price=48000000,
+        )
+        prods = [target_laptop, cand_8gb, cand_32gb]
+
+        res = recommend_similar_products(prods, target_product_id=10, limit=2)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.recommendations[0].product_id, 12)
+        self.assertIn("RAM 32GB", res.recommendations[0].reason)
+
 
 if __name__ == "__main__":
     unittest.main()

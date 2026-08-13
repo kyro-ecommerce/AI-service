@@ -407,7 +407,8 @@
       -0.08090415596961975,
       -0.021882200613617897,
       0.03706231713294983
-    ]
+    ],
+    "category": "phone"
   },
   {
     "product_id": 2,
@@ -817,7 +818,8 @@
       -0.00969618558883667,
       -0.027228569611907005,
       0.01891758292913437
-    ]
+    ],
+    "category": "phone"
   },
   {
     "product_id": 3,
@@ -1227,13 +1229,14 @@
       -0.06082994118332863,
       0.00429178960621357,
       0.031911104917526245
-    ]
+    ],
+    "category": "phone"
   },
   {
     "product_id": 4,
     "title": "Laptop Acer Nitro 5 Eagle",
     "category_id": 4,
-    "category_name": "phone",
+    "category_name": "laptop",
     "brand": "Acer",
     "original_price": 21990000,
     "discounted_price": 18911400,
@@ -1637,13 +1640,14 @@
       -0.030119212344288826,
       -0.07903464138507843,
       0.0502481572329998
-    ]
+    ],
+    "category": "laptop"
   },
   {
     "product_id": 5,
     "title": "Laptop ASUS ROG Strix SCAR 17",
     "category_id": 5,
-    "category_name": "phone",
+    "category_name": "laptop",
     "brand": "ASUS",
     "original_price": 69990000,
     "discounted_price": 60191400,
@@ -2047,13 +2051,14 @@
       -0.03175961971282959,
       -0.08480251580476761,
       0.011053694412112236
-    ]
+    ],
+    "category": "laptop"
   },
   {
     "product_id": 6,
     "title": "Laptop Dell XPS 13",
     "category_id": 6,
-    "category_name": "phone",
+    "category_name": "laptop",
     "brand": "Dell",
     "original_price": 32990000,
     "discounted_price": 30020900,
@@ -2457,13 +2462,14 @@
       -0.03023621067404747,
       -0.020333020016551018,
       0.02150662988424301
-    ]
+    ],
+    "category": "laptop"
   },
   {
     "product_id": 7,
     "title": "Laptop HP Spectre x360 14",
     "category_id": 7,
-    "category_name": "phone",
+    "category_name": "laptop",
     "brand": "HP",
     "original_price": 3799000,
     "discounted_price": 3495080,
@@ -2867,13 +2873,14 @@
       -0.03296797350049019,
       -0.04061625525355339,
       0.03374527394771576
-    ]
+    ],
+    "category": "laptop"
   },
   {
     "product_id": 8,
     "title": "Sạc dự phòng Anker PowerCore III Elite",
     "category_id": 8,
-    "category_name": "phone",
+    "category_name": "phu kien",
     "brand": "Anker",
     "original_price": 1599000,
     "discounted_price": 1295190,
@@ -3277,13 +3284,14 @@
       -0.05619514733552933,
       -0.051645491272211075,
       0.036702439188957214
-    ]
+    ],
+    "category": "phu kien"
   },
   {
     "product_id": 9,
     "title": "Sạc dự phòng Xiaomi Mi Power Bank 3",
     "category_id": 9,
-    "category_name": "phone",
+    "category_name": "phu kien",
     "brand": "Xiaomi",
     "original_price": 699000,
     "discounted_price": 496290,
@@ -3687,13 +3695,14 @@
       -0.016927778720855713,
       -0.015195311978459358,
       -0.006068418733775616
-    ]
+    ],
+    "category": "phu kien"
   },
   {
     "product_id": 10,
     "title": "Tai nghe Sony WH-1000XM5",
     "category_id": 10,
-    "category_name": "phone",
+    "category_name": "headphone",
     "brand": "Sony",
     "original_price": 8990000,
     "discounted_price": 7461700,
@@ -4097,13 +4106,14 @@
       -0.04751861095428467,
       -0.06719164550304413,
       0.01085696555674076
-    ]
+    ],
+    "category": "headphone"
   },
   {
     "product_id": 11,
     "title": "Tai nghe AirPods Pro",
     "category_id": 11,
-    "category_name": "phone",
+    "category_name": "headphone",
     "brand": "Apple",
     "original_price": 6990000,
     "discounted_price": 6011400,
@@ -4507,13 +4517,14 @@
       -0.041078463196754456,
       -0.019891012459993362,
       0.016565848141908646
-    ]
+    ],
+    "category": "headphone"
   },
   {
     "product_id": 12,
     "title": "Máy tính bảng Samsung Galaxy Tab S8 Ultra",
     "category_id": 12,
-    "category_name": "phone",
+    "category_name": "tablet",
     "brand": "Samsung",
     "original_price": 27990000,
     "discounted_price": 24911100,
@@ -4917,13 +4928,14 @@
       -0.04693944752216339,
       -0.03904992714524269,
       -0.0037540020421147346
-    ]
+    ],
+    "category": "tablet"
   },
   {
     "product_id": 13,
     "title": "iPad Pro 12.9 inch (M2, 2022)",
     "category_id": 13,
-    "category_name": "phone",
+    "category_name": "tablet",
     "brand": "Apple",
     "original_price": 30990000,
     "discounted_price": 27891000,
@@ -5327,13 +5339,14 @@
       -0.055878810584545135,
       0.008874308317899704,
       0.024609515443444252
-    ]
+    ],
+    "category": "tablet"
   },
   {
     "product_id": 14,
     "title": "MacBook Air M2",
     "category_id": 14,
-    "category_name": "phone",
+    "category_name": "laptop",
     "brand": "Apple",
     "original_price": 30990000,
     "discounted_price": 29130600,
@@ -5737,7 +5750,8 @@
       -0.0316707007586956,
       -0.07688070088624954,
       0.03487849608063698
-    ]
+    ],
+    "category": "laptop"
   },
   {
     "product_id": 15,
@@ -6147,13 +6161,14 @@
       -0.08089794218540192,
       -0.04398323595523834,
       0.07892749458551407
-    ]
+    ],
+    "category": "phone"
   },
   {
     "product_id": 16,
     "title": "Surface Laptop Studio 2",
     "category_id": 16,
-    "category_name": "phone",
+    "category_name": "laptop",
     "brand": "Microsoft",
     "original_price": 52990000,
     "discounted_price": 49810600,
@@ -6557,7 +6572,8 @@
       -0.02710658684372902,
       -0.0480257049202919,
       0.05661480128765106
-    ]
+    ],
+    "category": "laptop"
   },
   {
     "product_id": 17,
@@ -6967,7 +6983,8 @@
       -0.032471608370542526,
       -0.06826257705688477,
       0.027931425720453262
-    ]
+    ],
+    "category": "phone"
   },
   {
     "product_id": 18,
@@ -7377,7 +7394,8 @@
       -0.07146739214658737,
       -0.07579256594181061,
       0.006697614211589098
-    ]
+    ],
+    "category": "phone"
   },
   {
     "product_id": 19,
@@ -7787,13 +7805,14 @@
       -0.06970392167568207,
       -0.039535295218229294,
       0.038692474365234375
-    ]
+    ],
+    "category": "phone"
   },
   {
     "product_id": 20,
     "title": "ROG Zephyrus G14",
     "category_id": 20,
-    "category_name": "phone",
+    "category_name": "laptop",
     "brand": "Asus",
     "original_price": 38990000,
     "discounted_price": 35091000,
@@ -8197,7 +8216,8 @@
       -0.05422684922814369,
       -0.0669916421175003,
       0.06034862995147705
-    ]
+    ],
+    "category": "laptop"
   },
   {
     "product_id": 21,
@@ -8607,7 +8627,8 @@
       -0.05132417753338814,
       -0.01980217918753624,
       0.03915255889296532
-    ]
+    ],
+    "category": "phone"
   },
   {
     "product_id": 22,
@@ -9017,6 +9038,7 @@
       -0.037126947194337845,
       -0.0592271089553833,
       0.013606855645775795
-    ]
+    ],
+    "category": "phone"
   }
 ]

@@ -1,12 +1,93 @@
 import logging
 import math
+import re
+from typing import Any
+
 from app.schemas.product import Product
 from app.schemas.recommendation import RecommendationItem, RecommendationResponse
 from app.services.embedding_service import generate_embedding
 from app.services.product_content import build_content_text
 from app.services.search_service import calculate_cosine_similarity, normalize_text
 
+import re
+
 logger = logging.getLogger("ai-service.recommendation.ranker")
+
+
+def parse_numeric_spec(val: Any) -> float | None:
+    if not val:
+        return None
+    match = re.search(r"(\d+(?:\.\d+)?)", str(val))
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def calculate_spec_similarity(target: Product, candidate: Product) -> tuple[float, list[str]]:
+    """Calculates configuration and specification similarity score between target and candidate."""
+    matched_features = []
+    scores = []
+
+    # 1. RAM Capacity Comparison
+    t_ram = parse_numeric_spec(target.ram_capacity)
+    c_ram = parse_numeric_spec(candidate.ram_capacity)
+    if t_ram and c_ram:
+        if t_ram == c_ram:
+            scores.append(1.0)
+            matched_features.append(f"RAM {int(t_ram)}GB")
+        else:
+            diff_ratio = min(t_ram, c_ram) / max(t_ram, c_ram)
+            scores.append(diff_ratio)
+
+    # 2. ROM / Storage Capacity Comparison
+    t_rom = parse_numeric_spec(target.rom_capacity)
+    c_rom = parse_numeric_spec(candidate.rom_capacity)
+    if t_rom and c_rom:
+        if t_rom == c_rom:
+            scores.append(1.0)
+            matched_features.append(f"Bộ nhớ {int(t_rom)}GB")
+        else:
+            diff_ratio = min(t_rom, c_rom) / max(t_rom, c_rom)
+            scores.append(diff_ratio)
+
+    # 3. Screen Size Proximity
+    t_screen = parse_numeric_spec(target.screen_size)
+    c_screen = parse_numeric_spec(candidate.screen_size)
+    if t_screen and c_screen:
+        if abs(t_screen - c_screen) < 0.5:
+            scores.append(1.0)
+            matched_features.append(f"Màn hình ~{t_screen}\"")
+        else:
+            scores.append(0.5)
+
+    # 4. Specs Dictionary Overlap
+    t_specs = target.specs or {}
+    c_specs = candidate.specs or {}
+    if t_specs and c_specs:
+        shared_keys = set(t_specs.keys()).intersection(c_specs.keys())
+        if shared_keys:
+            matches = sum(1 for k in shared_keys if str(t_specs[k]).lower() == str(c_specs[k]).lower())
+            total = len(shared_keys)
+            scores.append(matches / total)
+
+    if not scores:
+        return 0.5, matched_features
+
+    return sum(scores) / len(scores), matched_features
+
+
+def calculate_price_proximity(target: Product, candidate: Product) -> float:
+    """Calculates price similarity ratio between 0.0 and 1.0."""
+    t_price = float(target.discounted_price or target.original_price or 0)
+    c_price = float(candidate.discounted_price or candidate.original_price or 0)
+    if t_price <= 0 or c_price <= 0:
+        return 0.5
+    max_p = max(t_price, c_price)
+    min_p = min(t_price, c_price)
+    return min_p / max_p
 
 
 def rerank_similar_candidates(
@@ -25,21 +106,38 @@ def rerank_similar_candidates(
         cand_brand = normalize_text(candidate.brand or "")
         cand_keywords = set(normalize_text(candidate.title or "").split())
 
+        spec_score, matched_features = calculate_spec_similarity(target_product, candidate)
+        price_score = calculate_price_proximity(target_product, candidate)
+
         if target_vector and candidate.embedding:
-            sim_score = calculate_cosine_similarity(target_vector, candidate.embedding)
+            vector_score = calculate_cosine_similarity(target_vector, candidate.embedding)
         else:
             intersection = len(target_keywords.intersection(cand_keywords))
             union = len(target_keywords.union(cand_keywords)) or 1
             jaccard = intersection / union
             rating_score = ((candidate.average_rating or 4.0) / 5.0) * 0.2
-            sim_score = (jaccard * 0.8) + rating_score
+            vector_score = (jaccard * 0.8) + rating_score
 
         brand_boost = 0.15 if cand_brand and cand_brand == target_brand else 0.0
-        keyword_overlap = len(target_keywords.intersection(cand_keywords)) * 0.15
-        total_score = sim_score + brand_boost + keyword_overlap
+        keyword_overlap = min(len(target_keywords.intersection(cand_keywords)) * 0.05, 0.15)
 
-        reason = "Sản phẩm có tính năng và phân khúc tương đồng"
-        if cand_brand and cand_brand == target_brand:
+        # Multi-Objective Composite Scoring: Vector Sim + Spec Sim + Price Segment + Brand Match
+        total_score = (
+            (vector_score * 0.40)
+            + (spec_score * 0.30)
+            + (price_score * 0.15)
+            + (brand_boost * 0.15)
+            + keyword_overlap
+        )
+
+        reason = "Sản phẩm cùng phân khúc và cấu hình tương đồng"
+        if matched_features:
+            spec_str = ", ".join(matched_features)
+            if cand_brand and cand_brand == target_brand:
+                reason = f"Cùng thương hiệu {target_product.brand} & cấu hình ({spec_str})"
+            else:
+                reason = f"Cấu hình tương đồng ({spec_str})"
+        elif cand_brand and cand_brand == target_brand:
             reason = f"Cùng thương hiệu {target_product.brand}"
         elif keyword_overlap > 0:
             reason = f"Sản phẩm tương tự {target_product.title}"

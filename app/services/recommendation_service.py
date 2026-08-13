@@ -51,7 +51,7 @@ def recommend_similar_products(
     limit: int = 5,
 ) -> RecommendationResponse | None:
     """Two-Stage Recommendation Pipeline for Similar Products with Cache."""
-    cache_key = f"rec_similar:{target_product_id}:{limit}"
+    cache_key = f"rec_similar_v2:{target_product_id}:{limit}"
 
     def _compute():
         target_product = find_product_by_id(products, target_product_id)
