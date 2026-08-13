@@ -38,7 +38,7 @@ class ChatAPITest(unittest.TestCase):
     def test_chat_api_greeting(self) -> None:
         response = client.post(
             "/api/v1/ai/chat",
-            json={"message": "xin chào shop", "limit": 2},
+            json={"message": "xin chao shop", "limit": 2},
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()

@@ -14,8 +14,8 @@ client = TestClient(app)
 
 class RefactoredProductionSuiteTest(unittest.TestCase):
     def test_gemini_model_configuration(self) -> None:
-        """Phase 1: Verify Gemini model uses configuration and defaults to gemini-2.0-flash."""
-        self.assertEqual(GEMINI_MODEL, "gemini-2.0-flash")
+        """Phase 1: Verify Gemini model uses configuration and defaults to gemini-3.1-flash-lite."""
+        self.assertEqual(GEMINI_MODEL, "gemini-3.1-flash-lite")
 
     def test_async_chat_api_response_structure_and_source(self) -> None:
         """Phase 1 & 2: Verify Async Chat API returns HTTP 200 and source metadata indicator."""

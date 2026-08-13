@@ -82,7 +82,7 @@ async def generate_gemini_reply(
         f"DANH SÁCH SẢN PHẨM SẴN CÓ TRONG KHO HỆ THỐNG:\n{products_context}\n"
     )
 
-    models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+    models_to_try = [GEMINI_MODEL, "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"]
     unique_models = [m for m in dict.fromkeys(models_to_try) if m]
 
 
@@ -151,7 +151,7 @@ async def stream_gemini_reply(
         f"DANH SÁCH SẢN PHẨM SẴN CÓ TRONG KHO HỆ THỐNG:\n{products_context}\n"
     )
 
-    models_to_try = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+    models_to_try = [GEMINI_MODEL, "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"]
     unique_models = [m for m in dict.fromkeys(models_to_try) if m]
 
     payload = {
