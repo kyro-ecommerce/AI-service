@@ -31,6 +31,9 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+CATALOG_SERVICE_URL = os.getenv("CATALOG_SERVICE_URL", "http://localhost:8081")
+
+
 
 
 

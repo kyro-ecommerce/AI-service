@@ -12,7 +12,9 @@ from app.db.session import SessionLocal
 from app.repositories.product_repository import deactivate_product, upsert_product
 from app.schemas.product import Product
 from app.schemas.product_event import ProductEvent, ProductEventType
+from app.services.backend_sync import fetch_product_dto_from_backend, map_dto_to_product
 from app.services.recommendation.caching import recommendation_response_cache
+
 
 from collections import deque
 
@@ -110,8 +112,14 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
                 logger.info("Deactivated product ID %s from event %s", product.product_id, event.event_id)
                 action = "deactivated"
             else:
+                backend_dto = fetch_product_dto_from_backend(product.product_id)
+                if backend_dto:
+                    product = map_dto_to_product(backend_dto, fallback_product=product)
+                    logger.info("Enriched product ID %s with full DTO from Backend REST API", product.product_id)
+
                 action = upsert_product(db, product)
                 logger.info("Upserted product ID %s (%s) from event %s", product.product_id, action, event.event_id)
+
 
             PROCESSED_EVENTS.add(event.event_id)
             _invalidate_caches()

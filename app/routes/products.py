@@ -59,3 +59,29 @@ def deactivate_product_by_id(
         message="Product deactivated successfully",
         product_id=product_id,
     )
+
+
+@router.post("/products/sync-backend/{product_id}")
+def sync_product_from_backend(
+    product_id: int,
+    db: Session = Depends(get_db),
+):
+    from app.services.backend_sync import fetch_product_dto_from_backend, map_dto_to_product
+
+    dto = fetch_product_dto_from_backend(product_id)
+    if not dto:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Product ID {product_id} not found in Backend Catalog Service",
+        )
+
+    product = map_dto_to_product(dto)
+    action = upsert_product(db, product)
+
+    return {
+        "message": f"Successfully synced product {product_id} from Backend",
+        "action": action,
+        "product_id": product_id,
+        "title": product.title,
+    }
+
