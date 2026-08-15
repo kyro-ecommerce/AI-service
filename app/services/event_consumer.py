@@ -112,10 +112,12 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
                 logger.info("Deactivated product ID %s from event %s", product.product_id, event.event_id)
                 action = "deactivated"
             else:
-                backend_dto = fetch_product_dto_from_backend(product.product_id)
-                if backend_dto:
-                    product = map_dto_to_product(backend_dto, fallback_product=product)
-                    logger.info("Enriched product ID %s with full DTO from Backend REST API", product.product_id)
+                # Only call Backend REST API as fallback if event payload is missing description
+                if not product.description:
+                    backend_dto = fetch_product_dto_from_backend(product.product_id)
+                    if backend_dto:
+                        product = map_dto_to_product(backend_dto, fallback_product=product)
+                        logger.info("Enriched product ID %s with full DTO from Backend REST API", product.product_id)
 
                 action = upsert_product(db, product)
                 logger.info("Upserted product ID %s (%s) from event %s", product.product_id, action, event.event_id)

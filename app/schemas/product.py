@@ -48,6 +48,41 @@ class Product(BaseModel):
     embedding: list[float] | None = None
     is_active: bool = True
 
+    @model_validator(mode="before")
+    @classmethod
+    def parse_attributes_and_defaults(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # Parse attributes list if present in payload (e.g. from RabbitMQ event or Backend DTO)
+            attrs = data.get("attributes")
+            if isinstance(attrs, list):
+                specs = data.get("specs") or {}
+                if not isinstance(specs, dict):
+                    specs = {}
+                spec_mapping = {
+                    "color": "color",
+                    "screen": "screen_size",
+                    "battery_capacity": "battery_capacity",
+                    "battery_type": "battery_type",
+                    "weight": "weight",
+                    "dimension": "dimension",
+                    "ram_capacity": "ram_capacity",
+                    "rom_capacity": "rom_capacity",
+                    "connection_port": "connection_port",
+                }
+                for attr in attrs:
+                    if isinstance(attr, dict):
+                        name = str(attr.get("name", "")).strip()
+                        val = str(attr.get("value", "")).strip()
+                        unit = attr.get("unit")
+                        full_val = f"{val} {unit}".strip() if unit else val
+                        if name and full_val:
+                            specs[name] = full_val
+                            flat_key = spec_mapping.get(name.lower())
+                            if flat_key and not data.get(flat_key):
+                                data[flat_key] = full_val
+                data["specs"] = specs
+        return data
+
     @model_validator(mode="after")
     def validate_product_values(self) -> "Product":
         self.title = self.title.strip()
@@ -58,6 +93,7 @@ class Product(BaseModel):
         if (
             self.original_price is not None
             and self.discounted_price is not None
+            and self.original_price > 0
             and self.discounted_price > self.original_price
         ):
             raise ValueError("discounted_price must be less than or equal to original_price")
