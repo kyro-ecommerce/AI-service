@@ -166,6 +166,7 @@ def retrieve_candidates_for_personalized(
     if not user_intents:
         return active[:limit]
 
+    # Ưu tiên gom các sản phẩm khớp với Ý định thời gian thực (user_intents) lên đầu danh sách Candidates
     intent_candidates = []
     other_candidates = []
 

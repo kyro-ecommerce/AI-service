@@ -13,22 +13,41 @@ def record_user_interaction(
     interaction_type: str,
     query_text: str,
     category_intents: list[str] | set[str] | None = None,
+    dedup_window_seconds: int = 10,
 ) -> bool:
     """Record a user search or chat interaction in PostgreSQL DB for personalizing future recommendations."""
-    if not db or not user_id or user_id <= 0:
+    if not db:
         return False
 
+    effective_user_id = user_id if user_id and user_id > 0 else 0
+
     try:
+        # Anti-duplicate check: ignore exact same interaction within dedup_window_seconds
+        now = datetime.now(timezone.utc)
+        recent_cutoff = now - timedelta(seconds=dedup_window_seconds)
+
+        existing = db.scalars(
+            select(UserInteraction)
+            .where(UserInteraction.user_id == effective_user_id)
+            .where(UserInteraction.interaction_type == interaction_type)
+            .where(UserInteraction.query_text == query_text)
+            .where(UserInteraction.created_at >= recent_cutoff)
+        ).first()
+
+        if existing:
+            logger.info("Skipping duplicate %s interaction for user %d within %ds window", interaction_type, effective_user_id, dedup_window_seconds)
+            return False
+
         intents_list = list(category_intents) if category_intents else []
         interaction = UserInteraction(
-            user_id=user_id,
+            user_id=effective_user_id,
             interaction_type=interaction_type,
             query_text=query_text,
             category_intents=intents_list,
         )
         db.add(interaction)
         db.commit()
-        logger.info("Recorded interaction for user %d: type=%s, intents=%s", user_id, interaction_type, intents_list)
+        logger.info("Recorded interaction for user %d: type=%s, intents=%s", effective_user_id, interaction_type, intents_list)
         return True
     except Exception as exc:
         db.rollback()

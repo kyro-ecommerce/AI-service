@@ -65,9 +65,14 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
     if routing_key.startswith("user.") or event_type_str.startswith("User"):
         user_id = payload.get("user_id", 0)
         cat_name = payload.get("category_name") or payload.get("category") or ""
-        action_type = "VIEW" if "viewed" in routing_key.lower() or "viewed" in event_type_str.lower() else "CART"
+        if any(kw in routing_key.lower() or kw in event_type_str.lower() for kw in ["order", "purchase", "completed"]):
+            action_type = "PURCHASE"
+        elif "cart" in routing_key.lower() or "cart" in event_type_str.lower():
+            action_type = "CART"
+        else:
+            action_type = "VIEW"
 
-        if user_id and cat_name:
+        if cat_name:
             from app.repositories.user_interaction_repository import record_user_interaction
             try:
                 with SessionLocal() as db:

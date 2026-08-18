@@ -81,7 +81,50 @@ def get_complementary_recommendations(
     products, _ = list_active_products_safe(db)
     response = recommend_accessories(products=products, target_product_id=product_id, limit=limit)
 
-    if not response:
-        raise HTTPException(status_code=404, detail=f"Product with ID {product_id} not found")
-
     return response
+
+
+from pydantic import BaseModel
+
+
+class InteractionRecordRequest(BaseModel):
+    user_id: int = 0
+    interaction_type: str = "VIEW"
+    query_text: str = ""
+    category_name: str = ""
+
+
+@router.post("/interactions/record")
+def record_interaction_endpoint(
+    req: InteractionRecordRequest,
+    db: Session = Depends(get_db),
+):
+    from app.repositories.user_interaction_repository import record_user_interaction
+    from app.services.search_service import extract_primary_category_intents, normalize_text
+
+    cat_name = (req.category_name or "").strip()
+    intents = set()
+    if cat_name:
+        intents.add(normalize_text(cat_name))
+
+    # Auto-extract fallback intent keywords from query text (e.g., title / category synonyms)
+    extracted_intents = extract_primary_category_intents(f"{cat_name} {req.query_text or ''}")
+    intents.update(extracted_intents)
+
+    if not intents and req.query_text:
+        # Ultimate fallback: add normalized first 2 words if query_text is non-empty
+        norm_q = normalize_text(req.query_text)
+        words = norm_q.split()
+        if words:
+            intents.add(words[0])
+
+    intents_list = list(intents)
+    record_user_interaction(
+        db=db,
+        user_id=req.user_id or 0,
+        interaction_type=req.interaction_type,
+        query_text=req.query_text or f"Realtime {req.interaction_type} for {cat_name}",
+        category_intents=intents_list,
+    )
+    return {"status": "recorded"}
+
