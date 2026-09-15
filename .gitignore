@@ -8,3 +8,19 @@ venv/
 .ruff_cache/
 *.log
 
+# ===============================
+# AI / ML Datasets & Generated Artifacts (Tránh +100k lines)
+# ===============================
+data/*.json
+!data/*.sample.json
+data/raw/
+data/processed/
+data/synthetic/
+
+# ===============================
+# IDE & System files
+# ===============================
+.DS_Store
+.idea/
+.vscode/
+*.swp
