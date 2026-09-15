@@ -216,5 +216,9 @@ def main():
     print("=" * 70 + "\n")
 
 
+def run_evaluation():
+    main()
+
+
 if __name__ == "__main__":
     main()

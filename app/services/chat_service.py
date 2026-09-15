@@ -51,10 +51,48 @@ def is_pure_greeting(normalized_msg: str) -> bool:
     return False
 
 
+import os
+import json
+
+KNOWLEDGE_STORE_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "chatbot_knowledge_store.json")
+)
+
+
 def get_store_qa_response(normalized_msg: str) -> str | None:
+    """Retrieve store policy QA answer using Keyword matching + Semantic RAG Vector Search (< 5ms)."""
+    # Tier 1: Fast Keyword Search
     for key, answer in STORE_QA_KEYWORDS.items():
         if key in normalized_msg:
             return answer
+
+    # Tier 2: Semantic RAG Cosine Similarity Vector Search (< 5ms)
+    if os.path.exists(KNOWLEDGE_STORE_PATH):
+        try:
+            from app.services.embedding_service import generate_embedding
+            from app.services.search_service import calculate_cosine_similarity
+
+            with open(KNOWLEDGE_STORE_PATH, "r", encoding="utf-8") as f:
+                store_data = json.load(f)
+                qa_items = store_data.get("qa_items", [])
+                if qa_items:
+                    query_emb = generate_embedding(normalized_msg)
+                    best_match = None
+                    best_score = 0.0
+
+                    for item in qa_items:
+                        item_emb = item.get("embedding")
+                        if item_emb:
+                            sim = calculate_cosine_similarity(query_emb, item_emb)
+                            if sim > best_score:
+                                best_score = sim
+                                best_match = item
+
+                    if best_match and best_score >= 0.72:
+                        return best_match["answer"]
+        except Exception as exc:
+            logger.debug("Chatbot RAG Store lookup error: %s", exc)
+
     return None
 
 
@@ -384,22 +422,23 @@ async def process_chat_consultation(
     primary_intents = extract_primary_category_intents(message)
 
     user_profile_context = ""
-    if user_id and user_id > 0 and db is not None:
+    if db is not None:
         await asyncio.to_thread(
             record_user_interaction,
             db=db,
-            user_id=user_id,
+            user_id=user_id if user_id else 0,
             interaction_type="CHAT",
             query_text=message,
             category_intents=primary_intents,
         )
-        recent_intents = await asyncio.to_thread(get_user_recent_intents, db, user_id)
-        if recent_intents:
-            intents_str = ", ".join(sorted(recent_intents))
-            user_profile_context = (
-                f"THÔNG TIN SỞ THÍCH GẦN ĐÂY CỦA KHÁCH HÀNG: Khách hàng thường quan tâm đến các danh mục/thương hiệu: {intents_str}. "
-                f"Ưu tiên tư vấn các sản phẩm phù hợp với sở thích này nếu sẵn có trong kho.\n\n"
-            )
+        if user_id and user_id > 0:
+            recent_intents = await asyncio.to_thread(get_user_recent_intents, db, user_id)
+            if recent_intents:
+                intents_str = ", ".join(sorted(recent_intents))
+                user_profile_context = (
+                    f"THÔNG TIN SỞ THÍCH GẦN ĐÂY CỦA KHÁCH HÀNG: Khách hàng thường quan tâm đến các danh mục/thương hiệu: {intents_str}. "
+                    f"Ưu tiên tư vấn các sản phẩm phù hợp với sở thích này nếu sẵn có trong kho.\n\n"
+                )
 
     has_category_mismatch = False
     if primary_intents and search_results:
@@ -497,21 +536,22 @@ async def stream_chat_consultation(
 
     primary_intents = extract_primary_category_intents(message)
     user_profile_context = ""
-    if user_id and user_id > 0 and db is not None:
+    if db is not None:
         await asyncio.to_thread(
             record_user_interaction,
             db=db,
-            user_id=user_id,
+            user_id=user_id if user_id else 0,
             interaction_type="CHAT",
             query_text=message,
             category_intents=primary_intents,
         )
-        recent_intents = await asyncio.to_thread(get_user_recent_intents, db, user_id)
-        if recent_intents:
-            intents_str = ", ".join(sorted(recent_intents))
-            user_profile_context = (
-                f"THÔNG TIN SỞ THÍCH GẦN ĐÂY CỦA KHÁCH HÀNG: Khách hàng thường quan tâm đến các danh mục/thương hiệu: {intents_str}.\n\n"
-            )
+        if user_id and user_id > 0:
+            recent_intents = await asyncio.to_thread(get_user_recent_intents, db, user_id)
+            if recent_intents:
+                intents_str = ", ".join(sorted(recent_intents))
+                user_profile_context = (
+                    f"THÔNG TIN SỞ THÍCH GẦN ĐÂY CỦA KHÁCH HÀNG: Khách hàng thường quan tâm đến các danh mục/thương hiệu: {intents_str}.\n\n"
+                )
 
     has_category_mismatch = False
     if primary_intents and search_results:

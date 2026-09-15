@@ -71,13 +71,35 @@ def recommend_similar_products(
     return get_cached_recommendation(cache_key, _compute)
 
 
+import os
+import json
+
+ACCESSORY_RULES_FILE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "accessory_rules.json")
+)
+
+
+def load_fpgrowth_accessory_rules(target_product_id: int) -> list[dict] | None:
+    """Load pre-computed FP-Growth association rules for target product from Feature Store (< 1ms)."""
+    if not os.path.exists(ACCESSORY_RULES_FILE):
+        return None
+    try:
+        with open(ACCESSORY_RULES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            rules = data.get("rules", {})
+            return rules.get(str(target_product_id))
+    except Exception as exc:
+        logger.debug("FP-Growth Feature Store read error: %s", exc)
+        return None
+
+
 def recommend_accessories(
     products: list[Product],
     target_product_id: int,
     limit: int = 5,
 ) -> RecommendationResponse | None:
     """Two-Stage Recommendation Pipeline for Accessory / Complementary Products with Cache."""
-    cache_key = f"rec_acc:{target_product_id}:{limit}"
+    cache_key = f"rec_acc_v3:{target_product_id}:{limit}"
 
     def _compute():
         target_product = find_product_by_id(products, target_product_id)
@@ -89,6 +111,45 @@ def recommend_accessories(
                 is_active=True,
             )
 
+        from app.schemas.recommendation import RecommendationItem
+
+        # Tier 1: FP-Growth Association Rules Lookup (< 1ms)
+        fp_rules = load_fpgrowth_accessory_rules(target_product_id)
+        fp_items: list[RecommendationItem] = []
+        seen_ids = set()
+
+        if fp_rules:
+            rule_acc_map = {r["accessory_id"]: r for r in fp_rules}
+            fp_candidates = [p for p in products if p.product_id in rule_acc_map and p.is_active]
+            if fp_candidates:
+                fp_candidates.sort(key=lambda p: (rule_acc_map[p.product_id]["lift"], rule_acc_map[p.product_id]["confidence"]), reverse=True)
+                for p in fp_candidates:
+                    rule = rule_acc_map[p.product_id]
+                    score = min(1.0, round(rule["confidence"] * 1.2, 4))
+                    fp_items.append(
+                        RecommendationItem(
+                            product_id=p.product_id,
+                            title=p.title,
+                            category_name=p.category_name,
+                            original_price=p.original_price,
+                            discounted_price=p.discounted_price,
+                            average_rating=p.average_rating,
+                            image_url=p.image_url,
+                            score=score,
+                            matched_reasons=[f"FP-Growth Lift: {rule['lift']:.1f}x (Thường được mua cùng nhau)"],
+                        )
+                    )
+                    seen_ids.add(p.product_id)
+
+                if len(fp_items) >= limit:
+                    return RecommendationResponse(
+                        target_product_id=target_product_id,
+                        recommendation_type="accessory",
+                        total=len(fp_items[:limit]),
+                        items=fp_items[:limit],
+                    )
+
+        # Tier 2 Fallback: Category Complementary Matching & Reranking
         target_cat = normalize_text(target_product.category_name or "")
         allowed_accessory_cats = None
 
@@ -107,10 +168,29 @@ def recommend_accessories(
             limit=20,
         )
 
-        return rerank_accessory_candidates(
+        tier2_res = rerank_accessory_candidates(
             target_product=target_product,
             candidates=candidates,
             limit=limit,
+        )
+
+        if not fp_items:
+            return tier2_res
+
+        # Merge Tier 1 (FP-Growth) and Tier 2 (Category Matching)
+        merged_items = list(fp_items)
+        if tier2_res and tier2_res.items:
+            for item in tier2_res.items:
+                if item.product_id not in seen_ids and item.product_id != target_product_id:
+                    merged_items.append(item)
+                    seen_ids.add(item.product_id)
+
+        final_items = merged_items[:limit]
+        return RecommendationResponse(
+            target_product_id=target_product_id,
+            recommendation_type="accessory",
+            total=len(final_items),
+            items=final_items,
         )
 
     return get_cached_recommendation(cache_key, _compute)

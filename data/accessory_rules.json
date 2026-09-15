@@ -1,0 +1,1151 @@
+{
+  "metadata": {
+    "num_transactions": 449,
+    "min_support": 0.005,
+    "min_confidence": 0.1,
+    "total_rules": 169,
+    "updated_at": "2026-08-20T06:09:46.755538+00:00"
+  },
+  "rules": {
+    "75": [
+      {
+        "accessory_id": 35,
+        "confidence": 0.2857,
+        "lift": 64.1429,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 19,
+        "confidence": 0.2857,
+        "lift": 18.3265,
+        "support": 0.0045
+      }
+    ],
+    "35": [
+      {
+        "accessory_id": 75,
+        "confidence": 1.0,
+        "lift": 64.1429,
+        "support": 0.0045
+      }
+    ],
+    "11": [
+      {
+        "accessory_id": 42,
+        "confidence": 0.5,
+        "lift": 6.2361,
+        "support": 0.0045
+      }
+    ],
+    "6": [
+      {
+        "accessory_id": 46,
+        "confidence": 0.4,
+        "lift": 3.9043,
+        "support": 0.0045
+      }
+    ],
+    "81": [
+      {
+        "accessory_id": 30,
+        "confidence": 0.4,
+        "lift": 22.45,
+        "support": 0.0045
+      }
+    ],
+    "30": [
+      {
+        "accessory_id": 81,
+        "confidence": 0.25,
+        "lift": 22.45,
+        "support": 0.0045
+      }
+    ],
+    "12": [
+      {
+        "accessory_id": 44,
+        "confidence": 0.4,
+        "lift": 4.3805,
+        "support": 0.0045
+      }
+    ],
+    "24": [
+      {
+        "accessory_id": 83,
+        "confidence": 0.4,
+        "lift": 16.3273,
+        "support": 0.0045
+      }
+    ],
+    "83": [
+      {
+        "accessory_id": 24,
+        "confidence": 0.1818,
+        "lift": 16.3273,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 3,
+        "confidence": 0.1818,
+        "lift": 16.3273,
+        "support": 0.0045
+      }
+    ],
+    "7": [
+      {
+        "accessory_id": 46,
+        "confidence": 0.4,
+        "lift": 3.9043,
+        "support": 0.0045
+      }
+    ],
+    "84": [
+      {
+        "accessory_id": 39,
+        "confidence": 0.2143,
+        "lift": 16.0357,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 22,
+        "confidence": 0.1429,
+        "lift": 12.8286,
+        "support": 0.0045
+      }
+    ],
+    "22": [
+      {
+        "accessory_id": 84,
+        "confidence": 0.4,
+        "lift": 12.8286,
+        "support": 0.0045
+      }
+    ],
+    "71": [
+      {
+        "accessory_id": 23,
+        "confidence": 0.1667,
+        "lift": 14.9667,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 48,
+        "confidence": 0.1667,
+        "lift": 2.0225,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 46,
+        "confidence": 0.1667,
+        "lift": 1.6268,
+        "support": 0.0045
+      }
+    ],
+    "23": [
+      {
+        "accessory_id": 71,
+        "confidence": 0.4,
+        "lift": 14.9667,
+        "support": 0.0045
+      }
+    ],
+    "3": [
+      {
+        "accessory_id": 83,
+        "confidence": 0.4,
+        "lift": 16.3273,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 47,
+        "confidence": 0.4,
+        "lift": 3.9911,
+        "support": 0.0045
+      }
+    ],
+    "86": [
+      {
+        "accessory_id": 44,
+        "confidence": 0.5,
+        "lift": 5.4756,
+        "support": 0.0067
+      }
+    ],
+    "39": [
+      {
+        "accessory_id": 84,
+        "confidence": 0.5,
+        "lift": 16.0357,
+        "support": 0.0067
+      }
+    ],
+    "80": [
+      {
+        "accessory_id": 29,
+        "confidence": 0.3333,
+        "lift": 16.6296,
+        "support": 0.0045
+      }
+    ],
+    "29": [
+      {
+        "accessory_id": 72,
+        "confidence": 0.3333,
+        "lift": 16.6296,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 80,
+        "confidence": 0.2222,
+        "lift": 16.6296,
+        "support": 0.0045
+      }
+    ],
+    "65": [
+      {
+        "accessory_id": 94,
+        "confidence": 0.1176,
+        "lift": 8.8039,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 90,
+        "confidence": 0.1765,
+        "lift": 7.2032,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 91,
+        "confidence": 0.1176,
+        "lift": 5.2824,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 51,
+        "confidence": 0.1765,
+        "lift": 3.9618,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 54,
+        "confidence": 0.1176,
+        "lift": 3.3015,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 43,
+        "confidence": 0.1176,
+        "lift": 1.4673,
+        "support": 0.0045
+      }
+    ],
+    "94": [
+      {
+        "accessory_id": 54,
+        "confidence": 0.3333,
+        "lift": 9.3542,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 65,
+        "confidence": 0.3333,
+        "lift": 8.8039,
+        "support": 0.0045
+      }
+    ],
+    "54": [
+      {
+        "accessory_id": 94,
+        "confidence": 0.125,
+        "lift": 9.3542,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 92,
+        "confidence": 0.125,
+        "lift": 6.2361,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 62,
+        "confidence": 0.1875,
+        "lift": 6.0134,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 91,
+        "confidence": 0.125,
+        "lift": 5.6125,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 59,
+        "confidence": 0.125,
+        "lift": 4.3173,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 60,
+        "confidence": 0.125,
+        "lift": 4.0089,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 65,
+        "confidence": 0.125,
+        "lift": 3.3015,
+        "support": 0.0045
+      }
+    ],
+    "25": [
+      {
+        "accessory_id": 85,
+        "confidence": 0.3333,
+        "lift": 21.381,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 77,
+        "confidence": 0.3333,
+        "lift": 18.7083,
+        "support": 0.0045
+      }
+    ],
+    "77": [
+      {
+        "accessory_id": 25,
+        "confidence": 0.25,
+        "lift": 18.7083,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 46,
+        "confidence": 0.25,
+        "lift": 2.4402,
+        "support": 0.0045
+      }
+    ],
+    "85": [
+      {
+        "accessory_id": 25,
+        "confidence": 0.2857,
+        "lift": 21.381,
+        "support": 0.0045
+      }
+    ],
+    "19": [
+      {
+        "accessory_id": 75,
+        "confidence": 0.2857,
+        "lift": 18.3265,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 53,
+        "confidence": 0.2857,
+        "lift": 9.1633,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 43,
+        "confidence": 0.2857,
+        "lift": 3.5635,
+        "support": 0.0045
+      }
+    ],
+    "67": [
+      {
+        "accessory_id": 14,
+        "confidence": 0.125,
+        "lift": 8.0179,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 87,
+        "confidence": 0.125,
+        "lift": 4.3173,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 45,
+        "confidence": 0.125,
+        "lift": 1.7539,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 48,
+        "confidence": 0.125,
+        "lift": 1.5169,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 50,
+        "confidence": 0.125,
+        "lift": 1.4391,
+        "support": 0.0045
+      }
+    ],
+    "14": [
+      {
+        "accessory_id": 67,
+        "confidence": 0.2857,
+        "lift": 8.0179,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 50,
+        "confidence": 0.5714,
+        "lift": 6.5788,
+        "support": 0.0089
+      },
+      {
+        "accessory_id": 52,
+        "confidence": 0.2857,
+        "lift": 5.8312,
+        "support": 0.0045
+      }
+    ],
+    "50": [
+      {
+        "accessory_id": 14,
+        "confidence": 0.1026,
+        "lift": 6.5788,
+        "support": 0.0089
+      },
+      {
+        "accessory_id": 66,
+        "confidence": 0.1026,
+        "lift": 3.5424,
+        "support": 0.0089
+      },
+      {
+        "accessory_id": 44,
+        "confidence": 0.1538,
+        "lift": 1.6848,
+        "support": 0.0134
+      },
+      {
+        "accessory_id": 47,
+        "confidence": 0.1026,
+        "lift": 1.0234,
+        "support": 0.0089
+      }
+    ],
+    "53": [
+      {
+        "accessory_id": 19,
+        "confidence": 0.1429,
+        "lift": 9.1633,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 63,
+        "confidence": 0.1429,
+        "lift": 6.4143,
+        "support": 0.0045
+      }
+    ],
+    "88": [
+      {
+        "accessory_id": 70,
+        "confidence": 0.25,
+        "lift": 10.2045,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 64,
+        "confidence": 0.25,
+        "lift": 5.9079,
+        "support": 0.0045
+      }
+    ],
+    "64": [
+      {
+        "accessory_id": 88,
+        "confidence": 0.1053,
+        "lift": 5.9079,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 55,
+        "confidence": 0.1579,
+        "lift": 4.4309,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 51,
+        "confidence": 0.1053,
+        "lift": 2.3632,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 46,
+        "confidence": 0.2105,
+        "lift": 2.0549,
+        "support": 0.0089
+      },
+      {
+        "accessory_id": 47,
+        "confidence": 0.1579,
+        "lift": 1.5754,
+        "support": 0.0067
+      }
+    ],
+    "70": [
+      {
+        "accessory_id": 88,
+        "confidence": 0.1818,
+        "lift": 10.2045,
+        "support": 0.0045
+      }
+    ],
+    "89": [
+      {
+        "accessory_id": 52,
+        "confidence": 0.3333,
+        "lift": 6.803,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 43,
+        "confidence": 0.2222,
+        "lift": 2.7716,
+        "support": 0.0045
+      }
+    ],
+    "52": [
+      {
+        "accessory_id": 89,
+        "confidence": 0.1364,
+        "lift": 6.803,
+        "support": 0.0067
+      }
+    ],
+    "68": [
+      {
+        "accessory_id": 93,
+        "confidence": 0.2222,
+        "lift": 9.9778,
+        "support": 0.0045
+      }
+    ],
+    "93": [
+      {
+        "accessory_id": 68,
+        "confidence": 0.2,
+        "lift": 9.9778,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 69,
+        "confidence": 0.2,
+        "lift": 4.7263,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 49,
+        "confidence": 0.2,
+        "lift": 4.7263,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 47,
+        "confidence": 0.2,
+        "lift": 1.9956,
+        "support": 0.0045
+      }
+    ],
+    "92": [
+      {
+        "accessory_id": 66,
+        "confidence": 0.2222,
+        "lift": 7.6752,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 54,
+        "confidence": 0.2222,
+        "lift": 6.2361,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 69,
+        "confidence": 0.2222,
+        "lift": 5.2515,
+        "support": 0.0045
+      }
+    ],
+    "69": [
+      {
+        "accessory_id": 92,
+        "confidence": 0.1053,
+        "lift": 5.2515,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 93,
+        "confidence": 0.1053,
+        "lift": 4.7263,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 90,
+        "confidence": 0.1053,
+        "lift": 4.2967,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 95,
+        "confidence": 0.1053,
+        "lift": 3.3759,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 51,
+        "confidence": 0.1053,
+        "lift": 2.3632,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 45,
+        "confidence": 0.1053,
+        "lift": 1.477,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 48,
+        "confidence": 0.1053,
+        "lift": 1.2774,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 44,
+        "confidence": 0.1053,
+        "lift": 1.1528,
+        "support": 0.0045
+      }
+    ],
+    "66": [
+      {
+        "accessory_id": 92,
+        "confidence": 0.1538,
+        "lift": 7.6752,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 72,
+        "confidence": 0.1538,
+        "lift": 7.6752,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 95,
+        "confidence": 0.1538,
+        "lift": 4.9341,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 50,
+        "confidence": 0.3077,
+        "lift": 3.5424,
+        "support": 0.0089
+      },
+      {
+        "accessory_id": 43,
+        "confidence": 0.2308,
+        "lift": 2.8782,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 45,
+        "confidence": 0.1538,
+        "lift": 2.1587,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 46,
+        "confidence": 0.1538,
+        "lift": 1.5017,
+        "support": 0.0045
+      }
+    ],
+    "58": [
+      {
+        "accessory_id": 79,
+        "confidence": 0.1429,
+        "lift": 7.127,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 90,
+        "confidence": 0.1429,
+        "lift": 5.8312,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 87,
+        "confidence": 0.1429,
+        "lift": 4.9341,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 48,
+        "confidence": 0.1429,
+        "lift": 1.7336,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 44,
+        "confidence": 0.1429,
+        "lift": 1.5645,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 47,
+        "confidence": 0.1429,
+        "lift": 1.4254,
+        "support": 0.0045
+      }
+    ],
+    "79": [
+      {
+        "accessory_id": 58,
+        "confidence": 0.2222,
+        "lift": 7.127,
+        "support": 0.0045
+      }
+    ],
+    "72": [
+      {
+        "accessory_id": 29,
+        "confidence": 0.3333,
+        "lift": 16.6296,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 66,
+        "confidence": 0.2222,
+        "lift": 7.6752,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 52,
+        "confidence": 0.2222,
+        "lift": 4.5354,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 50,
+        "confidence": 0.2222,
+        "lift": 2.5584,
+        "support": 0.0045
+      }
+    ],
+    "49": [
+      {
+        "accessory_id": 93,
+        "confidence": 0.1053,
+        "lift": 4.7263,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 44,
+        "confidence": 0.1053,
+        "lift": 1.1528,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 46,
+        "confidence": 0.1053,
+        "lift": 1.0275,
+        "support": 0.0045
+      }
+    ],
+    "91": [
+      {
+        "accessory_id": 59,
+        "confidence": 0.2,
+        "lift": 6.9077,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 62,
+        "confidence": 0.2,
+        "lift": 6.4143,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 54,
+        "confidence": 0.2,
+        "lift": 5.6125,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 65,
+        "confidence": 0.2,
+        "lift": 5.2824,
+        "support": 0.0045
+      }
+    ],
+    "62": [
+      {
+        "accessory_id": 91,
+        "confidence": 0.1429,
+        "lift": 6.4143,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 54,
+        "confidence": 0.2143,
+        "lift": 6.0134,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 95,
+        "confidence": 0.1429,
+        "lift": 4.5816,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 44,
+        "confidence": 0.1429,
+        "lift": 1.5645,
+        "support": 0.0045
+      }
+    ],
+    "59": [
+      {
+        "accessory_id": 91,
+        "confidence": 0.1538,
+        "lift": 6.9077,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 95,
+        "confidence": 0.1538,
+        "lift": 4.9341,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 54,
+        "confidence": 0.1538,
+        "lift": 4.3173,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 51,
+        "confidence": 0.1538,
+        "lift": 3.4538,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 41,
+        "confidence": 0.1538,
+        "lift": 2.7631,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 44,
+        "confidence": 0.1538,
+        "lift": 1.6848,
+        "support": 0.0045
+      }
+    ],
+    "61": [
+      {
+        "accessory_id": 52,
+        "confidence": 0.2,
+        "lift": 4.0818,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 47,
+        "confidence": 0.2,
+        "lift": 1.9956,
+        "support": 0.0045
+      }
+    ],
+    "63": [
+      {
+        "accessory_id": 53,
+        "confidence": 0.2,
+        "lift": 6.4143,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 42,
+        "confidence": 0.2,
+        "lift": 2.4944,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 46,
+        "confidence": 0.2,
+        "lift": 1.9522,
+        "support": 0.0045
+      }
+    ],
+    "56": [
+      {
+        "accessory_id": 41,
+        "confidence": 0.1818,
+        "lift": 3.2655,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 44,
+        "confidence": 0.1818,
+        "lift": 1.9911,
+        "support": 0.0045
+      }
+    ],
+    "57": [
+      {
+        "accessory_id": 87,
+        "confidence": 0.1818,
+        "lift": 6.2797,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 51,
+        "confidence": 0.1818,
+        "lift": 4.0818,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 42,
+        "confidence": 0.1818,
+        "lift": 2.2677,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 46,
+        "confidence": 0.1818,
+        "lift": 1.7747,
+        "support": 0.0045
+      }
+    ],
+    "87": [
+      {
+        "accessory_id": 57,
+        "confidence": 0.1538,
+        "lift": 6.2797,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 58,
+        "confidence": 0.1538,
+        "lift": 4.9341,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 67,
+        "confidence": 0.1538,
+        "lift": 4.3173,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 51,
+        "confidence": 0.1538,
+        "lift": 3.4538,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 43,
+        "confidence": 0.2308,
+        "lift": 2.8782,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 47,
+        "confidence": 0.1538,
+        "lift": 1.535,
+        "support": 0.0045
+      }
+    ],
+    "51": [
+      {
+        "accessory_id": 57,
+        "confidence": 0.1,
+        "lift": 4.0818,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 65,
+        "confidence": 0.15,
+        "lift": 3.9618,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 87,
+        "confidence": 0.1,
+        "lift": 3.4538,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 59,
+        "confidence": 0.1,
+        "lift": 3.4538,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 64,
+        "confidence": 0.1,
+        "lift": 2.3632,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 69,
+        "confidence": 0.1,
+        "lift": 2.3632,
+        "support": 0.0045
+      }
+    ],
+    "90": [
+      {
+        "accessory_id": 65,
+        "confidence": 0.2727,
+        "lift": 7.2032,
+        "support": 0.0067
+      },
+      {
+        "accessory_id": 58,
+        "confidence": 0.1818,
+        "lift": 5.8312,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 69,
+        "confidence": 0.1818,
+        "lift": 4.2967,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 45,
+        "confidence": 0.1818,
+        "lift": 2.5511,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 48,
+        "confidence": 0.1818,
+        "lift": 2.2064,
+        "support": 0.0045
+      }
+    ],
+    "95": [
+      {
+        "accessory_id": 59,
+        "confidence": 0.1429,
+        "lift": 4.9341,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 66,
+        "confidence": 0.1429,
+        "lift": 4.9341,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 62,
+        "confidence": 0.1429,
+        "lift": 4.5816,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 48,
+        "confidence": 0.3571,
+        "lift": 4.334,
+        "support": 0.0111
+      },
+      {
+        "accessory_id": 69,
+        "confidence": 0.1429,
+        "lift": 3.3759,
+        "support": 0.0045
+      }
+    ],
+    "48": [
+      {
+        "accessory_id": 95,
+        "confidence": 0.1351,
+        "lift": 4.334,
+        "support": 0.0111
+      },
+      {
+        "accessory_id": 45,
+        "confidence": 0.1081,
+        "lift": 1.5169,
+        "support": 0.0089
+      },
+      {
+        "accessory_id": 46,
+        "confidence": 0.1081,
+        "lift": 1.0552,
+        "support": 0.0089
+      }
+    ],
+    "60": [
+      {
+        "accessory_id": 54,
+        "confidence": 0.1429,
+        "lift": 4.0089,
+        "support": 0.0045
+      },
+      {
+        "accessory_id": 47,
+        "confidence": 0.1429,
+        "lift": 1.4254,
+        "support": 0.0045
+      }
+    ],
+    "55": [
+      {
+        "accessory_id": 64,
+        "confidence": 0.1875,
+        "lift": 4.4309,
+        "support": 0.0067
+      }
+    ],
+    "41": [
+      {
+        "accessory_id": 46,
+        "confidence": 0.16,
+        "lift": 1.5617,
+        "support": 0.0089
+      }
+    ],
+    "45": [
+      {
+        "accessory_id": 48,
+        "confidence": 0.125,
+        "lift": 1.5169,
+        "support": 0.0089
+      }
+    ],
+    "42": [
+      {
+        "accessory_id": 47,
+        "confidence": 0.1389,
+        "lift": 1.3858,
+        "support": 0.0111
+      }
+    ],
+    "47": [
+      {
+        "accessory_id": 42,
+        "confidence": 0.1111,
+        "lift": 1.3858,
+        "support": 0.0111
+      }
+    ],
+    "44": [
+      {
+        "accessory_id": 50,
+        "confidence": 0.1463,
+        "lift": 1.6848,
+        "support": 0.0134
+      }
+    ]
+  }
+}

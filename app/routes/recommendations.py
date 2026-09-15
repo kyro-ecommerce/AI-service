@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.db.session import get_db
 from app.repositories.product_repository import list_active_products_safe
@@ -28,7 +29,6 @@ def get_personalized_recommendations(
         limit=limit,
         db=db,
     )
-
 
 
 @router.get("/recommendations/trending", response_model=RecommendationResponse)
@@ -84,9 +84,6 @@ def get_complementary_recommendations(
     return response
 
 
-from pydantic import BaseModel
-
-
 class InteractionRecordRequest(BaseModel):
     user_id: int = 0
     interaction_type: str = "VIEW"
@@ -112,11 +109,12 @@ def record_interaction_endpoint(
     intents.update(extracted_intents)
 
     if not intents and req.query_text:
-        # Ultimate fallback: add normalized first 2 words if query_text is non-empty
+        # Ultimate fallback: filter out filler prefix words like 'view', 'product', 'realtime', 'cart', 'order', 'for'
+        FILLER_WORDS = {"view", "product", "realtime", "cart", "order", "for"}
         norm_q = normalize_text(req.query_text)
-        words = norm_q.split()
-        if words:
-            intents.add(words[0])
+        meaningful_words = [w for w in norm_q.split() if w not in FILLER_WORDS and len(w) >= 2]
+        if meaningful_words:
+            intents.add(meaningful_words[0])
 
     intents_list = list(intents)
     record_user_interaction(
@@ -127,4 +125,3 @@ def record_interaction_endpoint(
         category_intents=intents_list,
     )
     return {"status": "recorded"}
-
