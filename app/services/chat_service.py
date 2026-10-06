@@ -36,6 +36,7 @@ def format_products_context(search_results: list[SearchResult]) -> str:
 
 
 GREETING_TOKENS = {"hi", "hello", "chao", "xin chao", "alo", "hey", "shop oi", "ad oi", "bot oi"}
+GREETING_PREFIXES = {"xin chao", "chao shop", "chao ban", "hello ban", "hey shop"}
 STORE_QA_KEYWORDS = {
     "ban la ai": "Xin chào! 🤖 Mình là Trợ lý AI Tư vấn Mua sắm của Kyro Store. Mình có thể giúp bạn tìm kiếm, so sánh cấu hình và chọn mua Laptop, Điện thoại, Tai nghe, Chuột & Bàn phím chính hãng phù hợp nhất với nhu cầu của bạn!",
     "bao hanh": "Tất cả sản phẩm công nghệ tại Kyro Store đều được cam kết bảo hành chính hãng 12 - 24 tháng và hỗ trợ 1 đổi 1 trong 30 ngày đầu nếu có lỗi từ nhà sản xuất!",
@@ -45,9 +46,23 @@ STORE_QA_KEYWORDS = {
 
 
 def is_pure_greeting(normalized_msg: str) -> bool:
-    words = set(normalized_msg.split())
-    if normalized_msg in GREETING_TOKENS or (len(words) <= 2 and any(token in words for token in GREETING_TOKENS)):
+    words = normalized_msg.split()
+    word_set = set(words)
+    # Exact match or short 1-2 word message containing greeting token
+    if normalized_msg in GREETING_TOKENS:
         return True
+    if len(words) <= 2 and any(token in word_set for token in GREETING_TOKENS):
+        return True
+    # Multi-word short greeting (3-4 words) that starts with or contains a greeting prefix
+    if len(words) <= 4:
+        for prefix in GREETING_PREFIXES:
+            if normalized_msg.startswith(prefix):
+                return True
+        # "xin chao shop", "hi shop oi" patterns
+        if any(token in normalized_msg for token in GREETING_TOKENS):
+            non_greeting_words = [w for w in words if w not in {"xin", "chao", "hi", "hello", "shop", "oi", "ad", "bot", "hey", "alo"}]
+            if len(non_greeting_words) == 0:
+                return True
     return False
 
 
@@ -451,14 +466,22 @@ async def process_chat_consultation(
             has_category_mismatch = True
 
     products_context = format_products_context(search_results)
-    
-    # 1st Priority: Google Gemini 2.0 Flash
-    reply = await generate_gemini_reply(
-        user_message=message,
-        products_context=products_context,
-        user_profile_context=user_profile_context,
-        http_client=http_client,
-    )
+
+    # Fast-path: bypass LLM for greetings and store Q&A (saves tokens + avoids latency)
+    reply = ""
+    if is_greeting:
+        reply = generate_fallback_reply(user_message=message, search_results=[], is_greeting=True)
+    elif store_qa_answer:
+        reply = store_qa_answer
+
+    if not reply:
+        # 1st Priority: Google Gemini 2.0 Flash
+        reply = await generate_gemini_reply(
+            user_message=message,
+            products_context=products_context,
+            user_profile_context=user_profile_context,
+            http_client=http_client,
+        )
 
     # 2nd Priority: OpenRouter Failover (DeepSeek / Llama / GPT-4o-mini)
     if not reply:
@@ -471,15 +494,12 @@ async def process_chat_consultation(
 
     # 3rd Priority: Smart Deterministic Fallback (Offline Mode / Rule-based)
     if not reply:
-        if store_qa_answer:
-            reply = store_qa_answer
-        else:
-            reply = generate_fallback_reply(
-                user_message=message,
-                search_results=search_results,
-                has_category_mismatch=has_category_mismatch,
-                is_greeting=is_greeting,
-            )
+        reply = generate_fallback_reply(
+            user_message=message,
+            search_results=search_results,
+            has_category_mismatch=has_category_mismatch,
+            is_greeting=is_greeting,
+        )
 
 
     recommended_summaries = (
@@ -590,7 +610,54 @@ async def stream_chat_consultation(
     }
     yield f"data: {json.dumps(metadata_evt, ensure_ascii=False)}\n\n"
 
-    # 2. Try streaming from Gemini
+    # Fast-path: greeting & store Q&A don't need LLM or agent
+    if is_greeting or store_qa_answer:
+        fast_reply = (
+            store_qa_answer
+            if store_qa_answer
+            else generate_fallback_reply(user_message=message, search_results=[], is_greeting=True)
+        )
+        words = fast_reply.split(" ")
+        for idx, word in enumerate(words):
+            space = " " if idx < len(words) - 1 else ""
+            evt = {"type": "chunk", "content": word + space}
+            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(0.01)
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return
+
+    # Route ALL product queries through the ReAct Tool-Calling Agent (Gemini decides tools)
+    try:
+        from langchain_core.messages import HumanMessage
+        from app.agents.graph import build_multi_agent_graph
+
+        agent_graph = build_multi_agent_graph(db=db)
+        init_state = {
+            "messages": [HumanMessage(content=message)],
+            "user_id": user_id,
+            "user_message": message,
+            "recommended_products": recommended_summaries,
+            "final_reply": "",
+        }
+
+        res_state = await asyncio.to_thread(agent_graph.invoke, init_state)
+        agent_reply = res_state.get("final_reply", "")
+
+        if agent_reply:
+            words = agent_reply.split(" ")
+            for idx, word in enumerate(words):
+                space = " " if idx < len(words) - 1 else ""
+                evt = {"type": "chunk", "content": word + space}
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                await asyncio.sleep(0.01)
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+    except Exception as exc:
+        logger.warning("ReAct Agent execution error (%s), falling back to standard pipeline...", exc)
+
+    # Fallback: Try Gemini stream directly if agent fails
     has_streamed = False
     async for chunk in stream_gemini_reply(
         user_message=message,
@@ -603,7 +670,7 @@ async def stream_chat_consultation(
             evt = {"type": "chunk", "content": chunk}
             yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
 
-    # 3. Fallback if streaming didn't produce chunks (e.g. Gemini 429 Quota Limit or offline)
+    # Final fallback: OpenRouter → Deterministic
     if not has_streamed:
         reply = await generate_openrouter_reply(
             user_message=message,
@@ -619,7 +686,6 @@ async def stream_chat_consultation(
                 is_greeting=is_greeting,
             )
 
-        # Stream fallback reply word-by-word for continuous typewriter animation
         words = reply.split(" ")
         for idx, word in enumerate(words):
             space = " " if idx < len(words) - 1 else ""
@@ -627,8 +693,9 @@ async def stream_chat_consultation(
             yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
             await asyncio.sleep(0.02)
 
-    # 4. Done event
+    # Done event
     yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
 
 
 
