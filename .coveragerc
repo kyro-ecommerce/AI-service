@@ -1,0 +1,21 @@
+[run]
+branch = True
+source = app
+omit =
+    app/__init__.py
+    app/**/__init__.py
+
+[report]
+show_missing = True
+skip_covered = False
+precision = 2
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:
+
+[html]
+directory = artifacts/coverage/html
+
+[xml]
+output = artifacts/coverage/coverage.xml
