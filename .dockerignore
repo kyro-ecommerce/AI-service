@@ -6,6 +6,11 @@ __pycache__
 *.pyo
 *.pyd
 .db.env
+.env
+.env.*
+!.env.example
+artifacts/
+*.log
 tests/
 .pytest_cache
 .vscode
