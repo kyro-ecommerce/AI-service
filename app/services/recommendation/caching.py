@@ -18,9 +18,15 @@ logger = logging.getLogger("ai-service.recommendation.cache")
 class RecommendationCache:
     """Thread-safe Redis Distributed Cache with Local In-Memory Fallback."""
 
-    def __init__(self, ttl_seconds: int = 300, max_size: int = 500) -> None:
+    def __init__(
+        self,
+        ttl_seconds: int = 300,
+        max_size: int = 500,
+        key_prefix: str = "ai:rec:",
+    ) -> None:
         self.ttl_seconds = ttl_seconds
         self.max_size = max_size
+        self.key_prefix = key_prefix
         self._memory_store: dict[str, tuple[float, Any]] = {}
         self.redis_client: redis.Redis | None = None
         self._init_redis()
@@ -44,13 +50,17 @@ class RecommendationCache:
     def _store(self) -> dict[str, tuple[float, Any]]:
         return self._memory_store
 
+    def _redis_key(self, key: str) -> str:
+        return f"{self.key_prefix}{key}"
+
     def get(self, key: str) -> Any | None:
         """Retrieve recommendation item from Redis or local memory if Redis is unavailable."""
         if self.redis_client is not None:
             try:
-                cached_json = self.redis_client.get(key)
+                redis_key = self._redis_key(key)
+                cached_json = self.redis_client.get(redis_key)
                 if cached_json:
-                    logger.debug("Redis Cache HIT for key: %s", key)
+                    logger.debug("Redis Cache HIT for key: %s", redis_key)
                     try:
                         return RecommendationResponse.model_validate_json(cached_json)
                     except Exception:
@@ -78,7 +88,7 @@ class RecommendationCache:
                 else:
                     json_data = json.dumps(val)
                 px_ms = max(1, int(self.ttl_seconds * 1000))
-                self.redis_client.set(name=key, value=json_data, px=px_ms)
+                self.redis_client.set(name=self._redis_key(key), value=json_data, px=px_ms)
             except Exception as exc:
                 logger.warning("Redis set error (%s). Storing in local memory.", exc)
 
@@ -91,12 +101,19 @@ class RecommendationCache:
 
 
     def clear(self) -> None:
-        """Clear all cached entries."""
+        """Clear only recommendation keys owned by this service."""
         if self.redis_client is not None:
             try:
-                self.redis_client.flushdb()
+                batch: list[str] = []
+                for redis_key in self.redis_client.scan_iter(match=f"{self.key_prefix}*"):
+                    batch.append(redis_key)
+                    if len(batch) >= 500:
+                        self.redis_client.delete(*batch)
+                        batch.clear()
+                if batch:
+                    self.redis_client.delete(*batch)
             except Exception as exc:
-                logger.warning("Failed to flush Redis: %s", exc)
+                logger.warning("Failed to clear recommendation Redis keys: %s", exc)
         self._memory_store.clear()
 
     def __len__(self) -> int:

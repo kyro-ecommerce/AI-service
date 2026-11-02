@@ -1,0 +1,37 @@
+{
+  "schema_version": "catalog-ingestion-capture-v1",
+  "source": {
+    "adapter": "tiki_listing_v1",
+    "name": "tiki-fixture",
+    "dataset_kind": "development_fixture",
+    "collection_url": "https://example.invalid/api/listing",
+    "retrieved_at": "2026-10-30T00:00:00Z",
+    "currency": "VND"
+  },
+  "response": {
+    "data": [
+      {
+        "id": 101,
+        "name": "Sample Laptop A",
+        "brand_name": "Example Brand",
+        "url_path": "/sample-laptop-a.html",
+        "category_id": 8095,
+        "price": 19000000,
+        "original_price": 20000000,
+        "rating_average": 0,
+        "review_count": 0,
+        "stock": 0,
+        "quantity_sold": 0
+      },
+      {"id": 102, "name": "Sample Laptop B"},
+      {"id": "00101", "name": "Duplicate source identity", "url_path": "/duplicate.html"},
+      {
+        "id": 103,
+        "name": "sample laptop a",
+        "brand_name": "example brand",
+        "url_path": "/possible-duplicate.html",
+        "price": 18000000
+      }
+    ]
+  }
+}

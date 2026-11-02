@@ -1,0 +1,41 @@
+{
+  "id": 101,
+  "title": "Development fixture laptop",
+  "brand": "Example Brand",
+  "topLevelCategory": "Laptop",
+  "secondLevelCategory": "Example Brand",
+  "minPrice": 19000000,
+  "minSalePrice": 19000000,
+  "variants": [
+    {
+      "id": 201,
+      "sku": "FIXTURE-8GB",
+      "variantName": "Fixture 8GB",
+      "price": 19000000,
+      "salePrice": 19000000,
+      "stock": 1,
+      "active": true,
+      "technicalSpecs": {
+        "schemaVersion": "sku-tech-v1",
+        "ramGb": 8,
+        "storageGb": 512,
+        "evidence": {"kind": "manual_review", "reference": "development-fixture-only", "observedAt": "2026-10-30T00:00:00Z"}
+      }
+    },
+    {
+      "id": 202,
+      "sku": "FIXTURE-16GB",
+      "variantName": "Fixture 16GB",
+      "price": 25000000,
+      "salePrice": 25000000,
+      "stock": 1,
+      "active": true,
+      "technicalSpecs": {
+        "schemaVersion": "sku-tech-v1",
+        "ramGb": 16,
+        "storageGb": 1000,
+        "evidence": {"kind": "manual_review", "reference": "development-fixture-only", "observedAt": "2026-10-30T00:00:00Z"}
+      }
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import json
 import unittest
 from fastapi.testclient import TestClient
 
@@ -28,7 +29,10 @@ class ChatAPITest(unittest.TestCase):
     def test_chat_api_mouse_consultation(self) -> None:
         response = client.post(
             "/api/v1/ai/chat",
-            json={"message": "Cho mình hỏi chuột không dây dùng văn phòng loại nào tốt?", "limit": 2},
+            json={
+                "message": "Cho mình hỏi chuột không dây dùng văn phòng loại nào tốt?",
+                "limit": 2,
+            },
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -54,6 +58,38 @@ class ChatAPITest(unittest.TestCase):
         data = response.json()
         self.assertIn("reply", data)
         self.assertIn("bảo hành", data["reply"].lower())
+        self.assertIn("chưa có nguồn", data["reply"])
+        self.assertEqual(data["recommended_products"], [])
+        for unsupported_claim in ("12 - 24", "12-24", "30 ngày", "2h"):
+            self.assertNotIn(unsupported_claim, data["reply"])
+
+    def test_chat_api_store_policies_json_and_sse_without_unverified_promises(self) -> None:
+        for message, topic in (
+            ("giao hàng bao lâu?", "giao hàng"),
+            ("đổi trả như thế nào?", "đổi trả"),
+            ("địa chỉ của cửa hàng ở đâu?", "địa chỉ"),
+        ):
+            with self.subTest(message=message):
+                payload = {"message": message, "user_id": 0, "limit": 2}
+                normal = client.post("/api/v1/ai/chat", json=payload)
+                streaming = client.post("/api/v1/ai/chat/stream", json=payload)
+                self.assertEqual(normal.status_code, 200)
+                self.assertEqual(streaming.status_code, 200)
+                data = normal.json()
+                self.assertEqual(data["recommended_products"], [])
+                self.assertIn(topic, data["reply"])
+                self.assertIn("chưa có nguồn", data["reply"])
+                frames = [
+                    json.loads(line[6:])
+                    for line in streaming.text.splitlines()
+                    if line.startswith("data: ")
+                ]
+                self.assertEqual(frames[0]["recommended_products"], [])
+                self.assertEqual(
+                    "".join(f["content"] for f in frames if f["type"] == "chunk"),
+                    data["reply"],
+                )
+                self.assertEqual(frames[-1], {"type": "done"})
 
     def test_chat_api_category_mismatch(self) -> None:
         response = client.post(
@@ -106,7 +142,3 @@ class ChatAPITest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-
-

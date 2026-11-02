@@ -5,6 +5,7 @@ class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     limit: int = Field(default=10, ge=1, le=50)
     user_id: int | None = Field(default=0, description="Optional user ID for personalized history")
+    session_id: str | None = Field(default=None, max_length=128)
 
 
 
@@ -24,5 +25,5 @@ class SearchResult(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResult]
-    source: str = Field(default="database", description="Data origin source: 'database' or 'fallback_json'")
+    source: str = Field(default="database", description="Serving catalog snapshot source; demo JSON is not a runtime fallback")
 

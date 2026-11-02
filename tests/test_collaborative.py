@@ -1,97 +1,62 @@
-import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+import math
+from unittest.mock import patch
+
+import pytest
 
 from app.schemas.product import Product
-from app.services.recommendation.collaborative import (
-    calculate_time_decay,
-    compute_user_collaborative_scores,
-    INTERACTION_WEIGHTS,
-)
+from app.services.recommendation.collaborative import load_user_item_model
+from app.services.recommendation.user_item import ACTION_WEIGHTS, UserItemEvent, UserItemModel
 from app.services.recommendation_service import recommend_personalized_products
 
 
-class CollaborativeFilteringTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.laptop = Product(
-            product_id=1,
-            title="Laptop ThinkPad X1 Carbon",
-            category_name="laptop",
-            brand="Lenovo",
-            average_rating=4.8,
-            quantity_sold=50,
-            is_active=True,
+def test_impressions_and_query_actions_are_not_positive_item_preferences():
+    assert set(ACTION_WEIGHTS) == {"VIEW", "CLICK", "ADD_TO_CART", "PURCHASE"}
+
+
+def test_time_decay_halves_at_model_half_life():
+    now = datetime(2026, 1, 10, tzinfo=timezone.utc)
+    model = UserItemModel(half_life_days=30).fit(
+        [
+            UserItemEvent("user:1", 1, "VIEW", now - timedelta(days=1)),
+            UserItemEvent("user:1", 2, "VIEW", now - timedelta(days=31)),
+        ],
+        cutoff=now,
+        catalog_ids={1, 2},
+    )
+    assert math.expm1(model.profiles["user:1"][2]) == pytest.approx(
+        math.expm1(model.profiles["user:1"][1]) / 2
+    )
+
+
+def test_missing_artifact_is_unavailable(tmp_path):
+    assert load_user_item_model(str(tmp_path / "missing.json")) is None
+
+
+def test_api_uses_full_catalog_and_shared_hybrid_ranking():
+    cutoff = datetime(2026, 1, 10, tzinfo=timezone.utc)
+    events = [
+        UserItemEvent(actor, pid, "VIEW", cutoff - timedelta(days=1))
+        for actor, items in (("user:1", [1]), ("user:2", [1, 100]), ("user:3", [1, 100]))
+        for pid in items
+    ]
+    products = [
+        Product(product_id=pid, title=f"Product {pid}", category_name="same", is_active=True)
+        for pid in range(1, 101)
+    ]
+    products.append(Product(product_id=101, title="Inactive", is_active=False))
+    model = UserItemModel().fit(events, cutoff=cutoff, catalog_ids=set(range(1, 102)))
+    with patch(
+        "app.services.recommendation.collaborative.load_user_item_model", return_value=model
+    ):
+        response = recommend_personalized_products(products, user_id=1, limit=2)
+        reversed_response = recommend_personalized_products(
+            list(reversed(products)), user_id=1, limit=2
         )
-        self.mouse = Product(
-            product_id=2,
-            title="Chuột Logitech MX Master 3S",
-            category_name="mouse",
-            brand="Logitech",
-            average_rating=4.9,
-            quantity_sold=150,
-            is_active=True,
-        )
-        self.products = [self.laptop, self.mouse]
-
-    def test_interaction_weights_values(self) -> None:
-        """Verify business weights for implicit interactions."""
-        self.assertEqual(INTERACTION_WEIGHTS["VIEW"], 1.0)
-        self.assertEqual(INTERACTION_WEIGHTS["SEARCH"], 2.0)
-        self.assertEqual(INTERACTION_WEIGHTS["ADD_TO_CART"], 3.5)
-        self.assertEqual(INTERACTION_WEIGHTS["PURCHASE"], 5.0)
-
-    def test_calculate_time_decay(self) -> None:
-        """Verify exponential time decay halving every 7 days."""
-        now = datetime.now(timezone.utc)
-
-        decay_now = calculate_time_decay(now, now)
-        self.assertAlmostEqual(decay_now, 1.0, places=3)
-
-        decay_7d = calculate_time_decay(now - timedelta(days=7), now)
-        self.assertAlmostEqual(decay_7d, 0.5, places=2)
-
-        decay_14d = calculate_time_decay(now - timedelta(days=14), now)
-        self.assertAlmostEqual(decay_14d, 0.25, places=2)
-
-    @patch("app.repositories.user_interaction_repository.get_user_recent_intents")
-    def test_compute_user_collaborative_scores(self, mock_get_intents: MagicMock) -> None:
-        """Verify collaborative score calculation for active user."""
-        mock_get_intents.return_value = {"laptop"}
-
-        now = datetime.now(timezone.utc)
-        mock_record = MagicMock()
-        mock_record.interaction_type = "PURCHASE"
-        mock_record.created_at = now - timedelta(hours=1)
-        mock_record.category_intents = ["laptop"]
-
-        mock_db = MagicMock()
-        mock_db.scalars.return_value.all.return_value = [mock_record]
-
-        cf_scores = compute_user_collaborative_scores(user_id=10, products=self.products, db=mock_db)
-
-        self.assertIn(1, cf_scores)  # Laptop product ID 1 must be scored
-        self.assertGreater(cf_scores[1], 0.0)
-
-    @patch("app.services.recommendation.collaborative.compute_user_collaborative_scores")
-    @patch("app.repositories.user_interaction_repository.get_user_recent_intents")
-    def test_personalized_recommendations_cf_hybrid_strategy(
-        self, mock_get_intents: MagicMock, mock_compute_cf: MagicMock
-    ) -> None:
-        """Verify that recommend_personalized_products uses implicit_collaborative_filtering_hybrid when CF scores are present."""
-        mock_get_intents.return_value = {"laptop"}
-        mock_compute_cf.return_value = {1: 0.95}
-
-        res = recommend_personalized_products(
-            products=self.products,
-            user_id=10,
-            limit=2,
-            db=MagicMock(),
-        )
-
-        self.assertEqual(res.strategy, "implicit_collaborative_filtering_hybrid")
-        self.assertEqual(res.recommendations[0].product_id, 1)
-        self.assertIn("lọc cộng tác", res.recommendations[0].reason)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    assert response.strategy == "hybrid_item_knn_popularity"
+    assert response.recommendations[0].product_id == 100
+    assert response.recommendations[0].score > 0
+    assert [item.product_id for item in response.recommendations] == [
+        item.product_id for item in reversed_response.recommendations
+    ]
+    assert 1 not in [item.product_id for item in response.recommendations]

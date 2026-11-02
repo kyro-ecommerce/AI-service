@@ -1,3 +1,7 @@
+"""Validate a JSON seed by default. Persist only when --apply is explicit."""
+
+import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -31,11 +35,8 @@ def infer_correct_category(title: str, current_cat: str) -> str:
     return current_cat or "electronics"
 
 
-def normalize_legacy_product(raw_product: dict[str, Any], index: int) -> dict[str, Any]:
+def normalize_legacy_product(raw_product: dict[str, Any]) -> dict[str, Any]:
     product = dict(raw_product)
-
-    if isinstance(product.get("product_id"), str) and not product["product_id"].isdigit():
-        product["product_id"] = index
 
     if "title" not in product and "name" in product:
         product["title"] = product["name"]
@@ -52,15 +53,45 @@ def normalize_legacy_product(raw_product: dict[str, Any], index: int) -> dict[st
     return product
 
 
-def main() -> None:
-    raw_products = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
+def seed_products(products_file: Path = PRODUCTS_FILE, *, apply: bool = False) -> dict[str, Any]:
+    payload = products_file.read_bytes()
+    raw_products = json.loads(payload.decode("utf-8"))
+    if not isinstance(raw_products, list) or not all(isinstance(row, dict) for row in raw_products):
+        raise ValueError("Seed input must be a JSON array of product objects")
+    products = [Product(**normalize_legacy_product(row)) for row in raw_products]
+    product_ids = [product.product_id for product in products]
+    if len(product_ids) != len(set(product_ids)):
+        raise ValueError("Seed input contains duplicate product IDs")
+    report: dict[str, Any] = {
+        "input_file": products_file.name,
+        "input_sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
+        "validated_products": len(products),
+        "source": "json-seed",
+        "observational_origin_verified": False,
+        "applied": False,
+    }
+    if not apply:
+        return report
 
     with SessionLocal() as db:
-        for index, raw_product in enumerate(raw_products, start=1):
-            product = Product(**normalize_legacy_product(raw_product, index))
-            upsert_product(db, product)
+        try:
+            counts: dict[str, int] = {}
+            for product in products:
+                action = upsert_product(db, product, commit=False, source="json-seed")
+                counts[action] = counts.get(action, 0) + 1
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+    return {**report, "applied": True, "actions": counts}
 
-    print(f"Seeded {len(raw_products)} products into AI database.")
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", type=Path, default=PRODUCTS_FILE)
+    parser.add_argument("--apply", action="store_true", help="Write the validated seed in one transaction")
+    args = parser.parse_args()
+    print(json.dumps(seed_products(args.input, apply=args.apply), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

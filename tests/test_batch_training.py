@@ -1,52 +1,72 @@
-import os
-import unittest
-from unittest.mock import patch
-from app.schemas.product import Product
-from app.services.recommendation.collaborative import compute_user_collaborative_scores, load_batch_feature_store
-from scripts.train_batch_collaborative import run_batch_training, FEATURE_STORE_PATH
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import mock_open, patch
+
+import pytest
+
+from app.services.recommendation.collaborative import _load_versioned_store, load_user_item_model
+from app.services.recommendation.user_item import UserItemEvent, UserItemModel
+from scripts.train_batch_collaborative import run_batch_training
+
+CUTOFF = datetime(2026, 1, 10, tzinfo=timezone.utc)
 
 
-class BatchTrainingUnitTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.laptop = Product(
-            product_id=1,
-            title="Lenovo ThinkPad X1 Carbon",
-            category_name="laptop",
-            brand="Lenovo",
-            is_active=True,
-        )
-        self.products = [self.laptop]
-
-    def test_run_batch_training_exports_feature_store(self) -> None:
-        """Verify that running batch training generates valid Feature Store JSON."""
-        payload = run_batch_training()
-
-        self.assertIn("metadata", payload)
-        self.assertIn("user_features", payload)
-        self.assertTrue(os.path.exists(FEATURE_STORE_PATH))
-
-        # Verify load_batch_feature_store reads exported feature file
-        user_feat = load_batch_feature_store(101)
-        self.assertIsNotNone(user_feat)
-
-    def test_compute_user_collaborative_scores_uses_feature_store(self) -> None:
-        """Verify that compute_user_collaborative_scores uses Feature Store for < 1ms scoring."""
-        # Train feature store first
-        run_batch_training()
-
-        cf_scores = compute_user_collaborative_scores(user_id=105, products=self.products)
-        self.assertIn(1, cf_scores)
-        self.assertGreater(cf_scores[1], 0.0)
+def training_rows():
+    return [
+        UserItemEvent(actor, pid, "VIEW", CUTOFF - timedelta(days=1))
+        for actor, items in (("user:1", [1]), ("user:2", [1, 2]), ("user:3", [1, 2]))
+        for pid in items
+    ], {1, 2, 3}
 
 
-    @patch("app.services.recommendation.collaborative.load_batch_feature_store")
-    def test_fallback_when_feature_store_missing(self, mock_load_fs) -> None:
-        """Verify graceful fallback to real-time SVD / zero scores when Feature Store returns None."""
-        mock_load_fs.return_value = None
+def test_batch_artifact_preserves_online_offline_ranking(tmp_path: Path):
+    target = tmp_path / "model.json"
+    events, catalog = training_rows()
+    with patch("scripts.train_batch_collaborative.load_training_events", return_value=(events, catalog)):
+        payload = run_batch_training(str(target), cutoff=CUTOFF)
+    assert payload["metadata"]["model_version"] == "user-item-knn-v1"
+    assert len(payload["profiles"]) == 3
+    served = load_user_item_model(str(target))
+    assert served is not None
+    expected = UserItemModel().fit(events, cutoff=CUTOFF, catalog_ids=catalog)
+    assert served.rank("user:1", catalog, 2, hybrid=True) == expected.rank("user:1", catalog, 2, hybrid=True)
+    assert served.rank("user:1", catalog, 1, hybrid=True) == [2]
 
-        cf_scores = compute_user_collaborative_scores(user_id=9999, products=self.products, db=None)
-        self.assertEqual(cf_scores, {})
+
+def test_database_failure_preserves_existing_artifact(tmp_path: Path):
+    target = tmp_path / "model.json"
+    original = {"existing": "artifact"}
+    # Seed through the training/export workflow, then fail a later refresh.
+    with patch("scripts.train_batch_collaborative.load_training_events", return_value=training_rows()):
+        original = run_batch_training(str(target), cutoff=CUTOFF)
+    with patch("scripts.train_batch_collaborative.load_training_events", side_effect=RuntimeError("db offline")):
+        with pytest.raises(RuntimeError, match="db offline"):
+            run_batch_training(str(target))
+    assert json.loads(target.read_text(encoding="utf-8")) == json.loads(json.dumps(original))
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_demo_requires_isolated_output_and_cannot_be_served(tmp_path: Path):
+    with pytest.raises(ValueError, match="explicit output_path"):
+        run_batch_training(demo=True)
+    target = tmp_path / "demo.json"
+    run_batch_training(str(target), demo=True, cutoff=CUTOFF)
+    assert load_user_item_model(str(target)) is None
+
+
+def test_empty_training_preserves_store(tmp_path: Path):
+    target = tmp_path / "empty.json"
+    with patch("scripts.train_batch_collaborative.load_training_events", return_value=([], set())):
+        with pytest.raises(ValueError, match="No eligible"):
+            run_batch_training(str(target))
+    assert not target.exists()
+
+
+def test_pre_timestamp_policy_artifact_requires_retraining():
+    events, catalog = training_rows()
+    payload = UserItemModel().fit(events, cutoff=CUTOFF, catalog_ids=catalog).to_payload(
+        cutoff=CUTOFF, source="postgresql",
+    )
+    with patch("builtins.open", mock_open(read_data=json.dumps(payload))):
+        with pytest.raises(ValueError, match="timestamp-origin policy"):
+            _load_versioned_store("pre-policy-model-test.json", 0, 0)

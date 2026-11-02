@@ -5,11 +5,7 @@ from typing import Any
 
 from app.schemas.product import Product
 from app.schemas.recommendation import RecommendationItem, RecommendationResponse
-from app.services.embedding_service import generate_embedding
-from app.services.product_content import build_content_text
 from app.services.search_service import calculate_cosine_similarity, normalize_text
-
-import re
 
 logger = logging.getLogger("ai-service.recommendation.ranker")
 

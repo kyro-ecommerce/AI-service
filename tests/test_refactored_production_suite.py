@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from app.core.config import GEMINI_MODEL
+from app.core.config import GEMINI_FALLBACK_MODEL, GEMINI_MODEL
 from app.main import app
 from app.schemas.product_event import ProductEventType
 from app.services.event_consumer import PROCESSED_EVENT_IDS, process_event_payload
@@ -14,8 +14,10 @@ client = TestClient(app)
 
 class RefactoredProductionSuiteTest(unittest.TestCase):
     def test_gemini_model_configuration(self) -> None:
-        """Phase 1: Verify Gemini model uses configuration and defaults to gemini-3.1-flash-lite."""
-        self.assertEqual(GEMINI_MODEL, "gemini-3.1-flash-lite")
+        """Phase 1: Verify primary and fallback Gemini models are configured."""
+        self.assertTrue(GEMINI_MODEL.strip())
+        self.assertTrue(GEMINI_FALLBACK_MODEL.strip())
+        self.assertNotEqual(GEMINI_MODEL, GEMINI_FALLBACK_MODEL)
 
     def test_async_chat_api_response_structure_and_source(self) -> None:
         """Phase 1 & 2: Verify Async Chat API returns HTTP 200 and source metadata indicator."""
@@ -41,13 +43,15 @@ class RefactoredProductionSuiteTest(unittest.TestCase):
         self.assertIn("source", data)
         self.assertIn(data["source"], ["database", "fallback_json"])
 
+    @patch("app.services.event_consumer.fetch_product_dto_from_backend", return_value=None)
     @patch("app.services.event_consumer.upsert_product")
     @patch("app.services.event_consumer.SessionLocal")
     def test_rabbitmq_event_consumer_contract_and_idempotency(
-        self, mock_session: MagicMock, mock_upsert: MagicMock
+        self, mock_session: MagicMock, mock_upsert: MagicMock, mock_fetch: MagicMock
     ) -> None:
         """Phase 4: Verify ProductEvent contract validation and duplicate event idempotency."""
         mock_upsert.return_value = "created"
+        mock_session.return_value.__enter__.return_value.get.return_value = None
         PROCESSED_EVENT_IDS.clear()
 
         payload = {
@@ -71,6 +75,7 @@ class RefactoredProductionSuiteTest(unittest.TestCase):
         # Second delivery (Duplicate event_id): should be ignored by idempotency check
         action2 = process_event_payload(payload, routing_key="product.created")
         self.assertEqual(action2, "ignored_duplicate")
+        mock_fetch.assert_called_once_with(888)
 
 
 if __name__ == "__main__":

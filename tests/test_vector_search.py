@@ -1,11 +1,48 @@
 import unittest
+from unittest.mock import patch
 
 from app.schemas.product import Product
 from app.services.embedding_service import generate_embedding, VECTOR_DIMENSION
 from app.services.search_service import calculate_cosine_similarity, search_products
+from app.services import embedding_service
+
+
+class _ControlledEncoder:
+    """Deterministic axes for code-path checks, not a semantic-quality benchmark."""
+
+    def encode(self, text, **kwargs):
+        normalized = text.casefold()
+        axis = (
+            2
+            if any(word in normalized for word in ("chuột", "mouse"))
+            else 1
+            if any(word in normalized for word in ("headphone", "airpods", "tai nghe"))
+            else 0
+        )
+        vector = [0.0] * VECTOR_DIMENSION
+        vector[axis] = 1.0
+        return vector
 
 
 class VectorSearchTest(unittest.TestCase):
+    def setUp(self) -> None:
+        embedding_service._generate_embedding_cached.cache_clear()
+        # Fictitious pinned profile for offline code-path tests, not a real model.
+        profile = embedding_service.EncoderProfile("fixture/encoder", "a" * 40, 384, True)
+        for patcher in (
+            patch.object(embedding_service.config, "EMBEDDING_MODEL_NAME", profile.model_name),
+            patch.object(
+                embedding_service.config, "EMBEDDING_MODEL_REVISION", profile.model_revision
+            ),
+            patch(
+                "app.services.embedding_service.get_embedding_model",
+                return_value=embedding_service._LoadedEncoder(profile, _ControlledEncoder()),
+            ),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.addCleanup(embedding_service._generate_embedding_cached.cache_clear)
+
     def test_generate_embedding_returns_384d_vector(self) -> None:
         text = "Laptop Lenovo IdeaPad Slim 5 16GB RAM 512GB SSD"
         vec = generate_embedding(text)
@@ -21,7 +58,7 @@ class VectorSearchTest(unittest.TestCase):
 
         self.assertAlmostEqual(sim, 1.0, places=4)
 
-    def test_hybrid_search_semantic_matching(self) -> None:
+    def test_hybrid_search_with_controlled_encoder(self) -> None:
         product1 = Product(
             product_id=1,
             title="Lenovo IdeaPad Slim 5",
@@ -38,7 +75,7 @@ class VectorSearchTest(unittest.TestCase):
             description="Tai nghe khong day chong on",
         )
 
-        # Natural language query without exact keyword matches for title
+        # Controlled encoder verifies the retrieval path, not real NLP quality.
         results = search_products([product1, product2], "may tinh hoc lap trinh", limit=5)
 
         self.assertGreater(len(results), 0)
@@ -70,4 +107,3 @@ class VectorSearchTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

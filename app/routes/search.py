@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.core.security import RequestIdentity, get_request_identity
 from app.repositories.product_repository import (
     list_active_products_safe,
     search_vector_products_db,
@@ -19,19 +20,21 @@ def _perform_search(
     query: str,
     limit: int,
     user_id: int | None,
+    session_id: str | None,
     db: Session,
 ) -> SearchResponse:
     """Shared logic for both GET and POST search endpoints."""
     products, source = list_active_products_safe(db)
 
-    if user_id and user_id > 0 and db is not None:
+    if ((user_id and user_id > 0) or session_id) and db is not None:
         intents = extract_primary_category_intents(query)
         record_user_interaction(
             db=db,
-            user_id=user_id,
+            user_id=user_id or 0,
             interaction_type="SEARCH",
             query_text=query,
             category_intents=intents,
+            session_id=session_id,
         )
 
     db_vec_candidates = None
@@ -62,21 +65,34 @@ def search_get(
     q: str = Query(..., min_length=1, description="Search query string"),
     limit: int = Query(default=10, ge=1, le=50, description="Max number of results"),
     user_id: int | None = Query(default=0, description="Optional user ID for personalized history"),
+    session_id: str | None = Query(default=None, max_length=128),
     db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
 ) -> SearchResponse:
     """Hybrid AI Search via GET — accepts ?q=query&limit=10&user_id=0.
     
     Compatible with Frontend ai.service.js which calls GET /ai/search.
     """
-    return _perform_search(query=q, limit=limit, user_id=user_id, db=db)
+    return _perform_search(
+        query=q,
+        limit=limit,
+        user_id=identity.resolve(user_id),
+        session_id=session_id,
+        db=db,
+    )
 
 
 @router.post("/search", response_model=SearchResponse)
-def search(request: SearchRequest, db: Session = Depends(get_db)) -> SearchResponse:
+def search(
+    request: SearchRequest,
+    db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
+) -> SearchResponse:
     """Hybrid AI Search via POST — accepts JSON body with query, limit, user_id fields."""
     return _perform_search(
         query=request.query,
         limit=request.limit,
-        user_id=request.user_id,
+        user_id=identity.resolve(request.user_id),
+        session_id=request.session_id,
         db=db,
     )

@@ -1,224 +1,409 @@
-"""Offline Evaluation Script for Recommendation System.
+"""Leakage-resistant offline evaluation for recommendation models.
 
-Calculates standard industrial RecSys offline metrics:
-- NDCG@K (Normalized Discounted Cumulative Gain at K)
-- Precision@K
-- Recall@K
-- Hit Rate@K
-- Catalog Coverage & Diversity
+Default mode reads real user-item interactions from PostgreSQL. Synthetic data
+is available only through ``--demo`` and is always labeled non-publishable.
 """
 
-import math
-import sys
+from __future__ import annotations
+
+import argparse
+import hashlib
 import json
-import logging
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("ai-service.evaluation")
+from sqlalchemy import select
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.db.models import AIProduct, UserInteraction
+from app.db.session import SessionLocal
+from app.core.event_time import EVENT_TIMESTAMP_POLICY, temporal_event_time
+from app.services.recommendation.user_item import UserItemModel
+from app.evaluation.provenance import classify_provenance
+from app.evaluation.offline import (
+    CatalogAvailability,
+    EvaluationInteraction,
+    calculate_average_precision,
+    calculate_catalog_coverage,
+    calculate_dcg,
+    calculate_hit_rate,
+    calculate_idcg,
+    calculate_ndcg,
+    calculate_novelty,
+    calculate_precision,
+    calculate_recall,
+    evaluate_model,
+    hybrid_recommender,
+    item_knn_recommender,
+    paired_comparison,
+    popularity_recommender,
+    temporal_leave_last_split,
+)
+
+MIN_PILOT_ACTORS = 30
+MIN_ANALYSIS_ACTORS = 100
 
 
-def calculate_dcg(recommended_ids: list[int], ground_truth_set: set[int], k: int) -> float:
-    """Calculate Discounted Cumulative Gain (DCG@K)."""
-    dcg = 0.0
-    for i, item_id in enumerate(recommended_ids[:k], start=1):
-        if item_id in ground_truth_set:
-            # Binary relevance score (1 if relevant, 0 otherwise)
-            dcg += 1.0 / math.log2(i + 1)
-    return dcg
+def _actor_id(user_id: int, session_id: str | None) -> str | None:
+    if user_id > 0:
+        return f"user:{user_id}"
+    if session_id and session_id.strip():
+        return f"session:{session_id.strip()}"
+    return None
 
 
-def calculate_idcg(ground_truth_set: set[int], k: int) -> float:
-    """Calculate Ideal Discounted Cumulative Gain (IDCG@K)."""
-    n_relevant = min(len(ground_truth_set), k)
-    if n_relevant == 0:
-        return 0.0
-    return sum(1.0 / math.log2(i + 1) for i in range(1, n_relevant + 1))
+def load_real_evaluation_data() -> tuple[
+    list[EvaluationInteraction],
+    set[int],
+    dict[int, CatalogAvailability],
+    dict,
+]:
+    interactions: list[EvaluationInteraction] = []
+    skipped_missing_actor = 0
+    skipped_timestamp_origin = 0
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(UserInteraction)
+            .where(UserInteraction.product_id.isnot(None))
+            .order_by(UserInteraction.occurred_at.asc())
+        ).all()
+        products = db.scalars(select(AIProduct)).all()
+        catalog_ids = {product.product_id for product in products}
+        catalog_availability = {
+            product.product_id: CatalogAvailability(
+                available_from=product.available_from or product.created_at,
+                available_until=product.available_until,
+            )
+            for product in products
+        }
+        provenance = classify_provenance("postgresql", [
+            {"model_version": row.model_version, "context_data": row.context_data}
+            for row in rows
+        ])
+
+        for row in rows:
+            actor = _actor_id(row.user_id, row.session_id)
+            if actor is None or row.product_id is None:
+                skipped_missing_actor += 1
+                continue
+            event_time = temporal_event_time(row.occurred_at, row.occurred_at_source)
+            if event_time is None:
+                skipped_timestamp_origin += 1
+                continue
+            interactions.append(
+                EvaluationInteraction(
+                    actor_id=actor,
+                    product_id=int(row.product_id),
+                    interaction_type=row.interaction_type,
+                    occurred_at=event_time,
+                )
+            )
+
+    return interactions, catalog_ids, catalog_availability, {
+        "source": "postgresql",
+        "provenance": provenance,
+        "raw_rows": len(rows),
+        "usable_rows": len(interactions),
+        "skipped_missing_actor": skipped_missing_actor,
+        "skipped_timestamp_origin": skipped_timestamp_origin,
+        "timestamp_policy": EVENT_TIMESTAMP_POLICY,
+    }
 
 
-def calculate_ndcg(recommended_ids: list[int], ground_truth_set: set[int], k: int = 5) -> float:
-    """Calculate Normalized Discounted Cumulative Gain (NDCG@K)."""
-    idcg = calculate_idcg(ground_truth_set, k)
-    if idcg == 0.0:
-        return 0.0
-    dcg = calculate_dcg(recommended_ids, ground_truth_set, k)
-    return round(dcg / idcg, 4)
-
-
-def calculate_precision(recommended_ids: list[int], ground_truth_set: set[int], k: int = 5) -> float:
-    """Calculate Precision@K: Fraction of top K recommended items that are relevant."""
-    if not recommended_ids or k <= 0:
-        return 0.0
-    top_k = recommended_ids[:k]
-    hits = sum(1 for item_id in top_k if item_id in ground_truth_set)
-    return round(hits / float(k), 4)
-
-
-def calculate_recall(recommended_ids: list[int], ground_truth_set: set[int], k: int = 5) -> float:
-    """Calculate Recall@K: Fraction of relevant items that appear in top K recommendations."""
-    if not ground_truth_set:
-        return 0.0
-    top_k = recommended_ids[:k]
-    hits = sum(1 for item_id in top_k if item_id in ground_truth_set)
-    return round(hits / float(len(ground_truth_set)), 4)
-
-
-def calculate_hit_rate(recommended_ids: list[int], ground_truth_set: set[int], k: int = 5) -> float:
-    """Calculate Hit Rate@K: 1.0 if at least 1 relevant item appears in top K, else 0.0."""
-    top_k = recommended_ids[:k]
-    return 1.0 if any(item_id in ground_truth_set for item_id in top_k) else 0.0
-
-
-def calculate_catalog_coverage(all_recommended_ids: list[list[int]], total_catalog_ids: set[int]) -> float:
-    """Calculate Catalog Coverage: Fraction of all products in catalog recommended across all users."""
-    if not total_catalog_ids:
-        return 0.0
-    unique_recommended = set()
-    for rec_list in all_recommended_ids:
-        unique_recommended.update(rec_list)
-    return round(len(unique_recommended.intersection(total_catalog_ids)) / float(len(total_catalog_ids)), 4)
-
-
-def generate_synthetic_eval_dataset(products: list[Any]) -> list[dict[str, Any]]:
-    """Generate synthetic ground-truth test dataset for offline evaluation when DB records are sparse."""
-    eval_users = []
-    if not products:
-        return []
-
-    cats: dict[str, list[int]] = {}
-    for p in products:
-        cat = (getattr(p, "category_name", None) or "general").lower().strip()
-        cats.setdefault(cat, []).append(p.product_id)
-
-    user_id_counter = 1001
-    for cat_name, pids in cats.items():
-        if len(pids) >= 2:
-            eval_users.append({
-                "user_id": user_id_counter,
-                "target_category": cat_name,
-                "recent_intents": {cat_name},
-                "ground_truth_ids": set(pids[:5]),
-            })
-            user_id_counter += 1
-
-    return eval_users
-
-
-def evaluate_recommendation_models(k: int = 5) -> dict[str, Any]:
-    """Run comparative offline evaluation benchmarking Baseline vs Hybrid Model."""
-    import os
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-    from app.schemas.product import Product
-    from app.services.recommendation_service import (
-        recommend_trending_products,
-        recommend_personalized_products,
-    )
-
-    # Sample product catalog
-    sample_products = [
-        Product(product_id=1, title="Lenovo ThinkPad X1 Carbon", category_name="laptop", brand="Lenovo", average_rating=4.8, quantity_sold=120, is_active=True),
-        Product(product_id=2, title="Asus TUF Gaming A15", category_name="laptop", brand="Asus", average_rating=4.6, quantity_sold=90, is_active=True),
-        Product(product_id=3, title="MacBook Pro 14 M3", category_name="laptop", brand="Apple", average_rating=4.9, quantity_sold=200, is_active=True),
-        Product(product_id=4, title="Logitech MX Master 3S", category_name="mouse", brand="Logitech", average_rating=4.9, quantity_sold=350, is_active=True),
-        Product(product_id=5, title="Chuột Gaming Razer DeathAdder", category_name="mouse", brand="Razer", average_rating=4.7, quantity_sold=180, is_active=True),
-        Product(product_id=6, title="Tai nghe Sony WH-1000XM5", category_name="headphone", brand="Sony", average_rating=4.8, quantity_sold=210, is_active=True),
-        Product(product_id=7, title="Tai nghe AirPods Pro 2", category_name="headphone", brand="Apple", average_rating=4.9, quantity_sold=500, is_active=True),
-        Product(product_id=8, title="Màn hình Dell UltraSharp U2723QE", category_name="monitor", brand="Dell", average_rating=4.8, quantity_sold=150, is_active=True),
+def build_demo_data() -> tuple[
+    list[EvaluationInteraction],
+    set[int],
+    dict[int, CatalogAvailability],
+    dict,
+]:
+    """Create deterministic smoke-test data; never use it for thesis claims."""
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    product_sequences = {
+        "demo:1": [1, 2, 3, 4],
+        "demo:2": [2, 3, 5, 6],
+        "demo:3": [1, 5, 7, 8],
+        "demo:4": [3, 4, 6, 8],
+    }
+    interactions = [
+        EvaluationInteraction(
+            actor_id=actor,
+            product_id=product_id,
+            interaction_type="PURCHASE" if index == 3 else "VIEW",
+            occurred_at=now + timedelta(days=index, minutes=actor_index),
+        )
+        for actor_index, (actor, products) in enumerate(product_sequences.items())
+        for index, product_id in enumerate(products)
     ]
+    catalog_ids = set(range(1, 9))
+    availability = {
+        product_id: CatalogAvailability(available_from=now - timedelta(days=1))
+        for product_id in catalog_ids
+    }
+    return interactions, catalog_ids, availability, {
+        "source": "demo_synthetic",
+        "raw_rows": len(interactions),
+        "usable_rows": len(interactions),
+        "skipped_missing_actor": 0,
+    }
 
-    total_catalog = {p.product_id for p in sample_products}
-    eval_dataset = generate_synthetic_eval_dataset(sample_products)
 
-    baseline_metrics = {"ndcg": [], "precision": [], "recall": [], "hit_rate": [], "rec_ids": []}
-    hybrid_metrics = {"ndcg": [], "precision": [], "recall": [], "hit_rate": [], "rec_ids": []}
-
-    for u in eval_dataset:
-        ground_truth = u["ground_truth_ids"]
-        user_id = u["user_id"]
-
-        # 1. Baseline Model (Trending / Cold-Start)
-        base_res = recommend_trending_products(sample_products, limit=k)
-        base_ids = [item.product_id for item in base_res.recommendations]
-        baseline_metrics["ndcg"].append(calculate_ndcg(base_ids, ground_truth, k))
-        baseline_metrics["precision"].append(calculate_precision(base_ids, ground_truth, k))
-        baseline_metrics["recall"].append(calculate_recall(base_ids, ground_truth, k))
-        baseline_metrics["hit_rate"].append(calculate_hit_rate(base_ids, ground_truth, k))
-        baseline_metrics["rec_ids"].append(base_ids)
-
-        # 2. Phase 2 Hybrid Model (Personalized with intents & CF score boost)
-        from unittest.mock import MagicMock
-        mock_db = MagicMock()
-
-        # Simulate user intent returned
-        with unittest_mock_context(u["recent_intents"]):
-            hyb_res = recommend_personalized_products(sample_products, user_id=user_id, limit=k, db=mock_db)
-            hyb_ids = [item.product_id for item in hyb_res.recommendations]
-            hybrid_metrics["ndcg"].append(calculate_ndcg(hyb_ids, ground_truth, k))
-            hybrid_metrics["precision"].append(calculate_precision(hyb_ids, ground_truth, k))
-            hybrid_metrics["recall"].append(calculate_recall(hyb_ids, ground_truth, k))
-            hybrid_metrics["hit_rate"].append(calculate_hit_rate(hyb_ids, ground_truth, k))
-            hybrid_metrics["rec_ids"].append(hyb_ids)
-
-    def avg(lst: list[float]) -> float:
-        return round(sum(lst) / len(lst), 4) if lst else 0.0
-
-    report = {
-        "k": k,
-        "total_test_users": len(eval_dataset),
-        "baseline_trending": {
-            "ndcg@k": avg(baseline_metrics["ndcg"]),
-            "precision@k": avg(baseline_metrics["precision"]),
-            "recall@k": avg(baseline_metrics["recall"]),
-            "hit_rate@k": avg(baseline_metrics["hit_rate"]),
-            "catalog_coverage": calculate_catalog_coverage(baseline_metrics["rec_ids"], total_catalog),
+def dataset_fingerprint(
+    interactions: list[EvaluationInteraction],
+    catalog_ids: set[int],
+    catalog_availability: dict[int, CatalogAvailability] | None = None,
+) -> str:
+    canonical_rows = [
+        {
+            "actor_id": item.actor_id,
+            "product_id": item.product_id,
+            "interaction_type": item.interaction_type,
+            "occurred_at": item.occurred_at.isoformat(),
+        }
+        for item in sorted(
+            interactions,
+            key=lambda item: (
+                item.actor_id,
+                item.occurred_at,
+                item.product_id,
+                item.interaction_type,
+            ),
+        )
+    ]
+    canonical = json.dumps(
+        {
+            "interactions": canonical_rows,
+            "catalog": [
+                {
+                    "product_id": product_id,
+                    "available_from": (
+                        catalog_availability[product_id].available_from.isoformat()
+                        if catalog_availability and product_id in catalog_availability
+                        else None
+                    ),
+                    "available_until": (
+                        end.isoformat()
+                        if catalog_availability
+                        and product_id in catalog_availability
+                        and (end := catalog_availability[product_id].available_until) is not None
+                        else None
+                    ),
+                }
+                for product_id in sorted(catalog_ids)
+            ],
         },
-        "phase2_hybrid_model": {
-            "ndcg@k": avg(hybrid_metrics["ndcg"]),
-            "precision@k": avg(hybrid_metrics["precision"]),
-            "recall@k": avg(hybrid_metrics["recall"]),
-            "hit_rate@k": avg(hybrid_metrics["hit_rate"]),
-            "catalog_coverage": calculate_catalog_coverage(hybrid_metrics["rec_ids"], total_catalog),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
+
+
+def run_evaluation(
+    interactions: list[EvaluationInteraction],
+    catalog_ids: set[int],
+    data_audit: dict[str, Any],
+    *,
+    k: int = 5,
+    seed: int = 42,
+    catalog_availability: dict[int, CatalogAvailability] | None = None,
+) -> dict[str, Any]:
+    evaluable_interactions = [
+        interaction
+        for interaction in interactions
+        if interaction.product_id in catalog_ids
+        and (
+            catalog_availability is None
+            or catalog_availability[interaction.product_id].contains(
+                interaction.occurred_at
+            )
+        )
+    ]
+    next_item_split = temporal_leave_last_split(
+        evaluable_interactions,
+        min_train_interactions=2,
+        history_types={"CLICK", "VIEW", "ADD_TO_CART", "PURCHASE"},
+        target_types={"CLICK", "VIEW", "ADD_TO_CART", "PURCHASE"},
+        require_unseen_holdout=True,
+    )
+    conversion_split = temporal_leave_last_split(
+        evaluable_interactions,
+        min_train_interactions=2,
+        history_types={"CLICK", "VIEW", "ADD_TO_CART", "PURCHASE"},
+        target_types={"ADD_TO_CART", "PURCHASE"},
+        require_unseen_holdout=True,
+    )
+    registry = {
+        "popularity_baseline": popularity_recommender,
+        "item_knn": item_knn_recommender,
+        "hybrid_item_knn_popularity": hybrid_recommender,
+    }
+    protocol_results: dict[str, Any] = {}
+    for protocol, split, targets in (
+        ("next_item_unseen", next_item_split, ["CLICK", "VIEW", "ADD_TO_CART", "PURCHASE"]),
+        ("conversion_unseen", conversion_split, ["ADD_TO_CART", "PURCHASE"]),
+    ):
+        models = {
+            name: evaluate_model(
+                split, catalog_ids, recommender, model_name=name, k=k, seed=seed,
+                catalog_availability=catalog_availability, include_per_actor=True,
+            )
+            for name, recommender in registry.items()
+        }
+        comparisons = {
+            name: paired_comparison(result, models["popularity_baseline"], seed=seed)
+            for name, result in models.items() if name != "popularity_baseline"
+        }
+        # Actor identifiers are used internally for pairing, never written to reports.
+        for result in models.values():
+            result.pop("per_actor", None)
+        protocol_results[protocol] = {
+            "target_types": targets, "models": models, "paired_comparisons": comparisons,
+        }
+    next_item_baseline = protocol_results["next_item_unseen"]["models"]["popularity_baseline"]
+    overall_status = (
+        "ok" if next_item_baseline["status"] == "ok" else "insufficient_data"
+    )
+    minimum_protocol_actors = min(
+        len(next_item_split.cases),
+        len(conversion_split.cases),
+    )
+    if data_audit.get("source") != "postgresql":
+        evidence_grade = "exploratory_only"
+    elif data_audit.get("provenance", {}).get("status") == "synthetic_or_mixed":
+        evidence_grade = "exploratory_only"
+    elif not data_audit.get("provenance", {}).get("verified_observational", False):
+        evidence_grade = "provenance_unverified"
+    elif minimum_protocol_actors < MIN_PILOT_ACTORS:
+        evidence_grade = "insufficient_sample"
+    elif minimum_protocol_actors < MIN_ANALYSIS_ACTORS:
+        evidence_grade = "pilot"
+    else:
+        evidence_grade = "analysis_ready"
+
+    return {
+        "schema_version": "evaluation-v2",
+        "status": overall_status,
+        "dataset": {
+            **data_audit,
+            "fingerprint": dataset_fingerprint(
+                interactions,
+                catalog_ids,
+                catalog_availability,
+            ),
+            "catalog_items": len(catalog_ids),
+            "rows_in_active_catalog": len(evaluable_interactions),
+            "skipped_outside_active_catalog": len(interactions)
+            - len(evaluable_interactions),
+            "eligible_actors": {
+                "next_item": len(next_item_split.cases),
+                "conversion": len(conversion_split.cases),
+            },
+            "excluded_actors": {
+                "next_item": next_item_split.excluded_actors,
+                "conversion": conversion_split.excluded_actors,
+            },
+        },
+        "protocol": {
+            "split": "per-actor temporal leave-last-one-out",
+            "minimum_train_interactions": 2,
+            "holdout_item_must_be_unseen": True,
+            "seen_items_filtered_from_recommendations": True,
+            "global_training_pool_filtered_before_each_actor_cutoff": True,
+            "k": k,
+            "bootstrap_seed": seed,
+            "bootstrap_samples": 1000,
+            "primary_metric": "ndcg@k",
+            "latency_scope": "per-case training plus inference; not production request latency",
+            "model_parameters": UserItemModel().parameters,
+            "parameters_tuned_on_holdout": False,
+        },
+        "protocol_results": protocol_results,
+        "models": protocol_results["next_item_unseen"]["models"],
+        "evidence": {
+            "publishable": False,
+            "claim_ready": False,
+            "grade": evidence_grade,
+            "pilot_actor_threshold": MIN_PILOT_ACTORS,
+            "analysis_actor_threshold": MIN_ANALYSIS_ACTORS,
+            "reason": "paired results require verified real-data provenance, adequate samples, and independent validation before model-improvement claims",
         },
     }
 
-    return report
+
+def evaluate_recommendation_models(
+    k: int = 5,
+    *,
+    demo: bool = False,
+    seed: int = 42,
+) -> dict[str, Any]:
+    if demo:
+        interactions, catalog_ids, availability, audit = build_demo_data()
+    else:
+        try:
+            interactions, catalog_ids, availability, audit = load_real_evaluation_data()
+        except Exception as exc:
+            return {
+                "schema_version": "evaluation-v2",
+                "status": "data_source_unavailable",
+                "dataset": {"source": "postgresql", "error": type(exc).__name__},
+                "models": {},
+                "evidence": {
+                    "publishable": False,
+                    "grade": "unavailable",
+                    "reason": "PostgreSQL evaluation data could not be loaded",
+                },
+            }
+    return run_evaluation(
+        interactions,
+        catalog_ids,
+        audit,
+        k=k,
+        seed=seed,
+        catalog_availability=availability,
+    )
 
 
-def unittest_mock_context(recent_intents: set[str]):
-    from unittest.mock import patch
-    return patch("app.repositories.user_interaction_repository.get_user_recent_intents", return_value=recent_intents)
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--k", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Use explicitly labeled synthetic smoke-test data",
+    )
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    if args.k < 1:
+        parser.error("--k must be positive")
 
-
-def main():
-    print("=" * 70)
-    print("      OFFLINE RECOMMENDATION EVALUATION BENCHMARK (PHASE 3)      ")
-    print("=" * 70)
-
-    report = evaluate_recommendation_models(k=5)
-
-    base = report["baseline_trending"]
-    hyb = report["phase2_hybrid_model"]
-
-    print(f"\nTop-K Evaluation Limit: K = {report['k']}")
-    print(f"Total Test User Segments: {report['total_test_users']}\n")
-
-    print("| Metric               | Baseline (Trending) | Hybrid Model (Phase 2) | Gain (%)  |")
-    print("|----------------------|---------------------|------------------------|-----------|")
-
-    for metric in ["ndcg@k", "precision@k", "recall@k", "hit_rate@k", "catalog_coverage"]:
-        v_base = base[metric]
-        v_hyb = hyb[metric]
-        gain = ((v_hyb - v_base) / v_base * 100.0) if v_base > 0 else 0.0
-        print(f"| {metric:<20} | {v_base:<19.4f} | {v_hyb:<22.4f} | +{gain:<8.1f}% |")
-
-    print("\n" + "=" * 70)
-    print("SUMMARY: Phase 2 Hybrid Model shows significant NDCG and Recall gains!")
-    print("=" * 70 + "\n")
-
-
-def run_evaluation():
-    main()
+    report = evaluate_recommendation_models(k=args.k, demo=args.demo, seed=args.seed)
+    serialized = json.dumps(report, ensure_ascii=False, indent=2, default=str)
+    print(serialized)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(serialized + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
     main()
+
+
+__all__ = [
+    "calculate_average_precision",
+    "calculate_catalog_coverage",
+    "calculate_dcg",
+    "calculate_hit_rate",
+    "calculate_idcg",
+    "calculate_ndcg",
+    "calculate_novelty",
+    "calculate_precision",
+    "calculate_recall",
+    "evaluate_recommendation_models",
+    "dataset_fingerprint",
+    "run_evaluation",
+]

@@ -1,0 +1,30 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+    ".git",
+    ".venv",
+    "data",
+    "notebooks",
+]
+
+[tool.ruff.lint]
+# Start with correctness-focused rules. Style and import-order rules can be
+# enabled after the existing codebase has been normalized.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Executable scripts intentionally modify sys.path before importing app modules.
+# Existing experimental scripts and tests are normalized in their owning phase.
+"scripts/*.py" = ["E402", "F401", "F541", "F841"]
+"tests/*.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_configs = true
+exclude = [
+    "data/",
+    "notebooks/",
+]

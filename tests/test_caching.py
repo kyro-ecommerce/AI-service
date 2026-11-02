@@ -1,5 +1,6 @@
 import time
 import unittest
+from unittest.mock import MagicMock
 from app.schemas.product import Product
 from app.services.recommendation.caching import RecommendationCache, get_cached_recommendation
 from app.services.recommendation_service import recommend_similar_products
@@ -43,6 +44,30 @@ class CachingUnitTest(unittest.TestCase):
 
         time.sleep(0.15)
         self.assertIsNone(cache.get("key1"))
+
+    def test_redis_keys_are_namespaced(self) -> None:
+        cache = RecommendationCache(ttl_seconds=60, key_prefix="ai:rec:")
+        redis_client = MagicMock()
+        cache.redis_client = redis_client
+
+        cache.set("user:42", {"product_ids": [1, 2]})
+
+        redis_client.set.assert_called_once()
+        self.assertEqual(redis_client.set.call_args.kwargs["name"], "ai:rec:user:42")
+
+    def test_clear_deletes_only_owned_redis_namespace(self) -> None:
+        cache = RecommendationCache(ttl_seconds=60, key_prefix="ai:rec:")
+        redis_client = MagicMock()
+        redis_client.scan_iter.return_value = iter(["ai:rec:user:1", "ai:rec:product:2"])
+        cache.redis_client = redis_client
+        cache._memory_store["local"] = (time.time(), "value")
+
+        cache.clear()
+
+        redis_client.scan_iter.assert_called_once_with(match="ai:rec:*")
+        redis_client.delete.assert_called_once_with("ai:rec:user:1", "ai:rec:product:2")
+        redis_client.flushdb.assert_not_called()
+        self.assertEqual(cache._memory_store, {})
 
     def test_recommendation_service_cache_latency(self) -> None:
         """Verify that second call to recommend_similar_products is served from cache instantaneously."""

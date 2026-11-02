@@ -1,184 +1,81 @@
-"""Offline Batch Training & Feature Store Engine for Recommendation System.
+"""Train the shared user-item model; DB failures never synthesize replacement data."""
+from __future__ import annotations
 
-Reads all historical user interactions from PostgreSQL DB, builds global User-Category interaction matrices with
-exponential time-decay, trains TruncatedSVD Matrix Factorization, and exports pre-computed latent affinity features
-to a Feature Store file (`data/collaborative_features.json`) for < 1ms online inference.
-"""
-
+import argparse
+import json
 import os
 import sys
-import json
-import math
-import logging
-from datetime import datetime, timedelta, timezone
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 
-logger = logging.getLogger("ai-service.train_batch")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.services.recommendation.user_item import UserItemEvent, UserItemModel
+from app.core.event_time import EVENT_TIMESTAMP_POLICY, temporal_event_time
 
-# Add project root to sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-FEATURE_STORE_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "data", "collaborative_features.json")
-)
-
-INTERACTION_WEIGHTS = {
-    "VIEW": 1.0,
-    "SEARCH": 2.0,
-    "CHAT": 2.0,
-    "ADD_TO_CART": 3.5,
-    "PURCHASE": 5.0,
-}
-
-HALF_LIFE_DAYS = 7.0
-CHAT_TTL_DAYS = 3.0
+FEATURE_STORE_PATH = str(Path(__file__).resolve().parents[1] / "data" / "collaborative_features.json")
 
 
-def calculate_time_decay(created_at: datetime | None, now: datetime | None = None) -> float:
-    """Calculate exponential time decay weight."""
-    if not created_at:
-        return 1.0
-    if now is None:
-        now = datetime.now(timezone.utc)
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=timezone.utc)
+def load_training_events() -> tuple[list[UserItemEvent], set[int]]:
+    from sqlalchemy import select
+    from app.db.models import AIProduct, UserInteraction
+    from app.db.session import SessionLocal
 
-    delta_days = max(0.0, (now - created_at).total_seconds() / 86400.0)
-    decay_factor = math.exp(-(math.log(2) / HALF_LIFE_DAYS) * delta_days)
-    return max(0.01, decay_factor)
+    with SessionLocal() as db:
+        catalog_ids = set(db.scalars(select(AIProduct.product_id).where(AIProduct.is_active.is_(True))))
+        rows = db.scalars(select(UserInteraction).where(UserInteraction.product_id.isnot(None))).all()
+        events = []
+        for row in rows:
+            actor = (
+                f"user:{row.user_id}" if row.user_id > 0
+                else f"session:{row.session_id}" if row.session_id else None
+            )
+            event_time = temporal_event_time(row.occurred_at, row.occurred_at_source)
+            if actor and event_time is not None and row.product_id is not None:
+                events.append(UserItemEvent(actor, int(row.product_id), row.interaction_type, event_time))
+    return events, catalog_ids
 
 
-def run_batch_training() -> dict:
-    """Execute batch training matrix factorization and save feature store."""
-    print("=" * 70)
-    print("      OFFLINE BATCH TRAINING PIPELINE & FEATURE STORE ENGINE     ")
-    print("=" * 70)
-
-    now = datetime.now(timezone.utc)
-    records_data = []
-
-    # Attempt to load from PostgreSQL DB
+def run_batch_training(
+    output_path: str | None = None, *, demo: bool = False, cutoff: datetime | None = None,
+) -> dict:
+    if demo and output_path is None:
+        raise ValueError("Demo training requires an explicit output_path outside the production store")
+    if demo and Path(output_path or "").resolve() == Path(FEATURE_STORE_PATH).resolve():
+        raise ValueError("Demo training cannot overwrite the production feature store")
+    cutoff = cutoff or datetime.now(timezone.utc)
+    if demo:
+        from scripts.evaluate_recsys import build_demo_data
+        events, catalog_ids, _, _ = build_demo_data()
+        source = "demo_synthetic"
+    else:
+        events, catalog_ids = load_training_events()
+        source = "postgresql"
+    model = UserItemModel().fit(events, cutoff=cutoff, catalog_ids=catalog_ids)
+    if not model.profiles:
+        raise ValueError("No eligible user-item events; existing feature store preserved")
+    payload = model.to_payload(cutoff=cutoff, source=source)
+    payload["metadata"]["timestamp_policy"] = EVENT_TIMESTAMP_POLICY
+    target = Path(output_path or FEATURE_STORE_PATH)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = None
     try:
-        from app.db.session import SessionLocal
-        from app.db.models import UserInteraction
-        from sqlalchemy import select
-
-        with SessionLocal() as db:
-            interactions = db.scalars(
-                select(UserInteraction).order_by(UserInteraction.created_at.desc()).limit(1000)
-            ).all()
-            for rec in interactions:
-                records_data.append({
-                    "user_id": rec.user_id,
-                    "interaction_type": rec.interaction_type,
-                    "category_intents": rec.category_intents or [],
-                    "created_at": rec.created_at,
-                })
-        print(f"Loaded {len(records_data)} user interactions from PostgreSQL DB.")
-    except Exception as db_exc:
-        print(f"Database connection offline ({db_exc}). Generating synthetic batch interactions...")
-        # Synthetic interactions generator for offline training demonstration
-        synthetic_categories = ["laptop", "mouse", "headphone", "monitor", "keyboard"]
-        for uid in range(101, 120):
-            cat = synthetic_categories[uid % len(synthetic_categories)]
-            records_data.append({
-                "user_id": uid,
-                "interaction_type": "PURCHASE" if uid % 2 == 0 else "VIEW",
-                "category_intents": [cat],
-                "created_at": now - timedelta(days=uid % 5),
-            })
-
-    # Group interactions by user_id
-    user_profiles: dict[int, dict[str, float]] = {}
-
-    for rec in records_data:
-        uid = rec["user_id"]
-        itype = rec["interaction_type"]
-        created = rec["created_at"]
-        intents = rec["category_intents"]
-
-        # Enforce 3-day Chatbot TTL rule
-        if itype == "CHAT" and created:
-            if isinstance(created, datetime):
-                if created.tzinfo is None:
-                    created = created.replace(tzinfo=timezone.utc)
-                if (now - created) > timedelta(days=CHAT_TTL_DAYS):
-                    continue
-
-        decay = calculate_time_decay(created, now)
-        base_w = INTERACTION_WEIGHTS.get(itype, 1.5)
-        weight = base_w * decay
-
-        if uid not in user_profiles:
-            user_profiles[uid] = {}
-
-        if isinstance(intents, list):
-            for intent in intents:
-                if isinstance(intent, str):
-                    clean_intent = intent.lower().strip()
-                    user_profiles[uid][clean_intent] = (
-                        user_profiles[uid].get(clean_intent, 0.0) + weight
-                    )
-
-    # Matrix Factorization using TruncatedSVD
-    user_feature_store: dict[str, dict[str, float]] = {}
-    total_users_trained = len(user_profiles)
-
-    for uid, cat_weights in user_profiles.items():
-        if not cat_weights:
-            continue
-
-        cats = list(cat_weights.keys())
-        w_vals = [cat_weights[c] for c in cats]
-
-        try:
-            import numpy as np
-            from sklearn.decomposition import TruncatedSVD
-
-            if len(cats) > 1:
-                arr = np.array(w_vals, dtype=np.float32)
-                dummy_mat = np.diag(arr)
-                n_comp = min(len(cats) - 1, 4)
-                svd = TruncatedSVD(n_components=n_comp, random_state=42)
-                transformed = svd.fit_transform(dummy_mat).sum(axis=1)
-                norm_scores = (transformed - transformed.min()) / (
-                    (transformed.max() - transformed.min()) + 1e-6
-                )
-            else:
-                max_w = max(w_vals) if w_vals else 1.0
-                norm_scores = [w / max_w for w in w_vals]
-
-            user_feature_store[str(uid)] = {
-                cat: round(float(sc), 4) for cat, sc in zip(cats, norm_scores)
-            }
-        except Exception:
-            max_w = max(w_vals) if w_vals else 1.0
-            user_feature_store[str(uid)] = {
-                cat: round(w / max_w, 4) for cat, w in cat_weights.items()
-            }
-
-    # Package Feature Store payload
-    feature_store_payload = {
-        "metadata": {
-            "trained_at": now.isoformat(),
-            "model_version": "2.0-batch-svd",
-            "total_users_trained": total_users_trained,
-            "decay_half_life_days": HALF_LIFE_DAYS,
-        },
-        "user_features": user_feature_store,
-    }
-
-    # Save to data/collaborative_features.json
-    os.makedirs(os.path.dirname(FEATURE_STORE_PATH), exist_ok=True)
-    with open(FEATURE_STORE_PATH, "w", encoding="utf-8") as f:
-        json.dump(feature_store_payload, f, indent=2, ensure_ascii=False)
-
-    print(f"\n[SUCCESS] Exported Feature Store to: {FEATURE_STORE_PATH}")
-    print(f"Total Trained Users: {total_users_trained}")
-    print("Model Version: 2.0-batch-svd")
-    print("=" * 70 + "\n")
-
-    return feature_store_payload
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=target.parent, suffix=".tmp", delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            json.dump(payload, temporary, ensure_ascii=False, indent=2)
+        os.replace(temporary_path, target)
+    finally:
+        if temporary_path and temporary_path.exists():
+            temporary_path.unlink()
+    return payload
 
 
 if __name__ == "__main__":
-    run_batch_training()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output")
+    parser.add_argument("--demo", action="store_true")
+    args = parser.parse_args()
+    payload = run_batch_training(output_path=args.output, demo=args.demo)
+    print(json.dumps(payload["metadata"], indent=2))

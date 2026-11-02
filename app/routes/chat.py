@@ -3,6 +3,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.core.security import RequestIdentity, get_request_identity
+from app.core.rate_limit import enforce_chat_rate_limit
+from app.core.privacy import redact_pii
 from app.schemas.chat import ChatFeedbackRequest, ChatFeedbackResponse, ChatRequest, ChatResponse
 from app.repositories.user_interaction_repository import record_chat_feedback
 from app.services.chat_service import process_chat_consultation, stream_chat_consultation
@@ -14,13 +17,16 @@ router = APIRouter()
 async def chat_feedback(
     feedback_req: ChatFeedbackRequest,
     db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
+    _rate_limit: None = Depends(enforce_chat_rate_limit),
 ) -> ChatFeedbackResponse:
     """Record explicit user feedback (thumbs_up / thumbs_down) on AI response."""
     record_chat_feedback(
         db=db,
-        user_id=feedback_req.user_id or 0,
-        message_text=feedback_req.message_text,
+        user_id=identity.resolve(feedback_req.user_id),
+        message_text=redact_pii(feedback_req.message_text),
         feedback=feedback_req.feedback,
+        session_id=feedback_req.session_id,
     )
     return ChatFeedbackResponse()
 
@@ -31,6 +37,8 @@ async def chat_consultation(
     chat_req: ChatRequest,
     request: Request,
     db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
+    _rate_limit: None = Depends(enforce_chat_rate_limit),
 ) -> ChatResponse:
     """Smart AI Shopping Assistant Endpoint (RAG Chatbot).
     
@@ -43,7 +51,8 @@ async def chat_consultation(
         message=chat_req.message,
         limit=chat_req.limit,
         db=db,
-        user_id=chat_req.user_id or 0,
+        user_id=identity.resolve(chat_req.user_id),
+        session_id=chat_req.session_id,
         http_client=http_client,
     )
 
@@ -53,6 +62,8 @@ async def chat_consultation_stream(
     chat_req: ChatRequest,
     request: Request,
     db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
+    _rate_limit: None = Depends(enforce_chat_rate_limit),
 ) -> StreamingResponse:
     """Real-time SSE Streaming AI Shopping Assistant Endpoint.
     
@@ -63,7 +74,8 @@ async def chat_consultation_stream(
         message=chat_req.message,
         limit=chat_req.limit,
         db=db,
-        user_id=chat_req.user_id or 0,
+        user_id=identity.resolve(chat_req.user_id),
+        session_id=chat_req.session_id,
         http_client=http_client,
     )
     return StreamingResponse(

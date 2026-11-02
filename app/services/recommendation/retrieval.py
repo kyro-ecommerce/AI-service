@@ -19,12 +19,24 @@ CATEGORY_SYNONYMS: dict[str, list[str]] = {
 }
 
 CATEGORY_KEYWORDS: list[str] = [
-    "laptop", "macbook", "notebook", "may tinh xach tay",
-    "iphone", "dien thoai", "phone", "smartphone",
-    "chuot", "mouse",
-    "tai nghe", "headphone", "airpods", "headset",
-    "ban phim", "keyboard",
-    "man hinh", "monitor",
+    "laptop",
+    "macbook",
+    "notebook",
+    "may tinh xach tay",
+    "iphone",
+    "dien thoai",
+    "phone",
+    "smartphone",
+    "chuot",
+    "mouse",
+    "tai nghe",
+    "headphone",
+    "airpods",
+    "headset",
+    "ban phim",
+    "keyboard",
+    "man hinh",
+    "monitor",
 ]
 
 
@@ -75,16 +87,19 @@ def retrieve_candidates_for_similar(
         cand_title_norm = normalize_text(p.title or "")
 
         # Tier 1: Exact category match
-        is_exact_cat = target_cat_norm and cand_cat_norm and (
-            cand_cat_norm == target_cat_norm
-            or target_cat_norm in cand_cat_norm
-            or cand_cat_norm in target_cat_norm
+        is_exact_cat = (
+            target_cat_norm
+            and cand_cat_norm
+            and (
+                cand_cat_norm == target_cat_norm
+                or target_cat_norm in cand_cat_norm
+                or cand_cat_norm in target_cat_norm
+            )
         )
 
         # Tier 2: Intent match (synonyms or title category keyword match)
         is_intent_match = any(
-            intent in cand_cat_norm or intent in cand_title_norm
-            for intent in intents
+            intent in cand_cat_norm or intent in cand_title_norm for intent in intents
         )
 
         if is_exact_cat or is_intent_match:
@@ -96,8 +111,11 @@ def retrieve_candidates_for_similar(
 
     # Tier 3 Fallback: Return other active products only if no intent match found
     fallback = [
-        p for p in products
-        if p.product_id != target_product.product_id and p.is_active and p.product_id not in seen_ids
+        p
+        for p in products
+        if p.product_id != target_product.product_id
+        and p.is_active
+        and p.product_id not in seen_ids
     ]
     return fallback[:limit]
 
@@ -145,38 +163,9 @@ def retrieve_candidates_for_accessories(
     return (candidates + fallback)[:limit]
 
 
-
 def retrieve_candidates_for_trending(
     products: list[Product],
     limit: int = 50,
 ) -> list[Product]:
     """Stage 1 Candidate Retrieval for Cold-Start / Popularity Recommendations."""
     return [p for p in products if p.is_active][:limit]
-
-
-def retrieve_candidates_for_personalized(
-    products: list[Product],
-    user_intents: set[str] | None = None,
-    limit: int = 50,
-) -> list[Product]:
-    """Stage 1 Candidate Retrieval for Personalized Recommendations, prioritizing real-time user intents."""
-    from app.services.search_service import normalize_text
-
-    active = [p for p in products if p.is_active]
-    if not user_intents:
-        return active[:limit]
-
-    # Ưu tiên gom các sản phẩm khớp với Ý định thời gian thực (user_intents) lên đầu danh sách Candidates
-    intent_candidates = []
-    other_candidates = []
-
-    for p in active:
-        cat_norm = normalize_text(p.category_name or "")
-        title_norm = normalize_text(p.title or "")
-        if any(intent in cat_norm or intent in title_norm for intent in user_intents):
-            intent_candidates.append(p)
-        else:
-            other_candidates.append(p)
-
-    return (intent_candidates + other_candidates)[:limit]
-

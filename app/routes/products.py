@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.core.security import require_internal_request
+from app.core.product_source import ProductSourceConflictError
 from app.repositories.product_repository import (
     deactivate_product,
     list_active_product_summaries,
@@ -35,8 +37,15 @@ def get_products(
 
 
 @router.post("/products/sync", response_model=ProductSyncResponse)
-def sync_product(product: Product, db: Session = Depends(get_db)) -> ProductSyncResponse:
-    action = upsert_product(db, product)
+def sync_product(
+    product: Product,
+    db: Session = Depends(get_db),
+    _authorized: None = Depends(require_internal_request),
+) -> ProductSyncResponse:
+    try:
+        action = upsert_product(db, product, source="internal-sync")
+    except ProductSourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return ProductSyncResponse(
         message="Product synced successfully",
@@ -49,8 +58,12 @@ def sync_product(product: Product, db: Session = Depends(get_db)) -> ProductSync
 def deactivate_product_by_id(
     product_id: int,
     db: Session = Depends(get_db),
+    _authorized: None = Depends(require_internal_request),
 ) -> ProductDeactivateResponse:
-    was_deactivated = deactivate_product(db, product_id)
+    try:
+        was_deactivated = deactivate_product(db, product_id, source="internal-sync")
+    except ProductSourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     if not was_deactivated:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -65,18 +78,27 @@ def deactivate_product_by_id(
 def sync_product_from_backend(
     product_id: int,
     db: Session = Depends(get_db),
+    _authorized: None = Depends(require_internal_request),
 ):
-    from app.services.backend_sync import fetch_product_dto_from_backend, map_dto_to_product
+    from app.services.backend_sync import CatalogServiceError, fetch_product_dto_from_backend, map_dto_to_product
 
-    dto = fetch_product_dto_from_backend(product_id)
+    try:
+        dto = fetch_product_dto_from_backend(product_id)
+        product = map_dto_to_product(dto) if dto is not None else None
+    except (CatalogServiceError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Catalog Service is unavailable or returned an invalid product") from exc
     if not dto:
         raise HTTPException(
             status_code=404,
             detail=f"Product ID {product_id} not found in Backend Catalog Service",
         )
 
-    product = map_dto_to_product(dto)
-    action = upsert_product(db, product)
+    if product is None:
+        raise HTTPException(status_code=502, detail="Catalog Service returned an invalid product")
+    try:
+        action = upsert_product(db, product, source="catalog-service")
+    except ProductSourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return {
         "message": f"Successfully synced product {product_id} from Backend",

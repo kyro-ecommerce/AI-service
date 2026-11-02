@@ -1,0 +1,6 @@
+{
+  "schema_version": "catalog-source-index-v1",
+  "identities": [
+    {"source": "tiki-fixture", "source_product_id": "101", "product_id": 42}
+  ]
+}

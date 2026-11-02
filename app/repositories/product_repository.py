@@ -1,19 +1,23 @@
-import json
 import logging
 import time
-from pathlib import Path
+from datetime import datetime
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.models import AIProduct
+from app.core.product_source import (
+    ProductWriteSource, guard_seed_source_collision, validate_product_write_source,
+)
 from app.schemas.product import Product, ProductSummary
 from app.services.embedding_service import generate_embedding
 from app.services.product_content import build_content_text, build_specs, build_tags
 
 logger = logging.getLogger("ai-service.repository")
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PRODUCTS_FILE = PROJECT_ROOT / "data" / "products.json"
+
+
+class CatalogUnavailableError(SQLAlchemyError):
+    """Serving has no authoritative catalog; never substitute a demo dataset."""
 
 
 def to_product_summary(product: AIProduct | Product | dict) -> ProductSummary:
@@ -94,52 +98,30 @@ _products_cache: tuple[list[Product], str] | None = None
 _products_cache_time: float = 0.0
 
 
-def list_active_products_safe(db: Session = None) -> tuple[list[Product], str]:
-    """Retrieve active products from PostgreSQL database if available, else fallback to data/products.json, cached in memory for 30s."""
+def list_active_products_safe(db: Session | None = None) -> tuple[list[Product], str]:
+    """Serve only DB snapshots, cached for 30s; an empty catalog is still valid.
+
+    A warm cache can serve its last successful DB snapshot until expiry. On a
+    cache miss, missing/failed DB access raises instead of loading demo JSON.
+    """
     global _products_cache, _products_cache_time
+    if db is None:
+        raise CatalogUnavailableError("Catalog database session is required")
     now = time.time()
 
-    if _products_cache is not None and (now - _products_cache_time) < 30.0:
+    if (_products_cache is not None and _products_cache[1] == "database"
+            and (now - _products_cache_time) < 30.0):
         return _products_cache
 
-    result = None
-    if db is not None:
-        try:
-            products = list_active_products(db)
-            if products:
-                result = (products, "database")
-        except Exception as exc:
-            logger.warning("PostgreSQL DB unavailable (%s). Falling back to dataset.", exc)
-
-    if result is None and PRODUCTS_FILE.exists():
-        raw_products = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
-        fallback_products = []
-        for idx, raw in enumerate(raw_products, start=1):
-            prod = dict(raw)
-            if isinstance(prod.get("product_id"), str) and not str(prod["product_id"]).isdigit():
-                prod["product_id"] = idx
-            if "title" not in prod and "name" in prod:
-                prod["title"] = prod["name"]
-            if "category_name" not in prod and "category" in prod:
-                prod["category_name"] = prod["category"]
-            if "original_price" not in prod and "price" in prod:
-                prod["original_price"] = int(prod["price"])
-            p_obj = Product(**prod)
-            if not p_obj.embedding:
-                try:
-                    p_obj.embedding = generate_embedding(build_content_text(p_obj))
-                except Exception:
-                    pass
-            fallback_products.append(p_obj)
-
-        result = ([p for p in fallback_products if p.is_active], "fallback_json")
-
-    if result is None:
-        result = ([], "fallback_json")
-
-    _products_cache = result
+    try:
+        products = list_active_products(db)
+    except SQLAlchemyError as exc:
+        _products_cache = None
+        _products_cache_time = 0.0
+        raise CatalogUnavailableError("Catalog database is unavailable") from exc
+    _products_cache = (products, "database")
     _products_cache_time = now
-    return result
+    return _products_cache
 
 
 
@@ -185,27 +167,50 @@ def list_active_product_summaries(
         ).all()
 
         return [to_product_summary(product) for product in products], total or 0
-    except Exception as exc:
-        logger.warning("DB unavailable for summaries (%s). Falling back to dataset.", exc)
-        safe_products, _ = list_active_products_safe(db=None)
-        total = len(safe_products)
-        start = (page - 1) * size
-        end = start + size
-        return [to_product_summary(p) for p in safe_products[start:end]], total
+    except SQLAlchemyError as exc:
+        raise CatalogUnavailableError("Catalog database is unavailable") from exc
 
 
-def upsert_product(db: Session, product: Product) -> str:
+def upsert_product(
+    db: Session,
+    product: Product,
+    *,
+    commit: bool = True,
+    available_at: datetime | None = None,
+    source: ProductWriteSource = "unknown",
+) -> str:
+    validate_product_write_source(source)
     existing_product = db.get(AIProduct, product.product_id)
+    if existing_product is not None:
+        guard_seed_source_collision(existing_product.source, source)
     action = "updated" if existing_product else "created"
 
     db_product = existing_product or AIProduct(product_id=product.product_id)
-    apply_product_fields(db_product, product)
+    if existing_product is None and available_at is not None:
+        db_product.available_from = available_at
+    elif (
+        existing_product is not None
+        and available_at is not None
+        and (
+            existing_product.available_from is None
+            or available_at < existing_product.available_from
+        )
+    ):
+        db_product.available_from = available_at
+    if product.is_active:
+        db_product.available_until = None
+    apply_product_fields(db_product, product, source=source)
 
     db.add(db_product)
 
     try:
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
     except IntegrityError:
+        if not commit:
+            raise
         if existing_product:
             raise
 
@@ -215,14 +220,20 @@ def upsert_product(db: Session, product: Product) -> str:
         if not db_product:
             raise
 
-        apply_product_fields(db_product, product)
+        guard_seed_source_collision(db_product.source, source)
+        apply_product_fields(db_product, product, source=source)
         db.commit()
         action = "updated"
 
     return action
 
 
-def apply_product_fields(db_product: AIProduct, product: Product) -> None:
+def apply_product_fields(
+    db_product: AIProduct, product: Product, *, source: ProductWriteSource = "unknown",
+    refresh_embedding: bool = True,
+) -> None:
+    validate_product_write_source(source)
+    previous_content = db_product.content_text
     db_product.title = product.title
     db_product.category_id = product.category_id
     db_product.category_name = product.category_name
@@ -250,8 +261,13 @@ def apply_product_fields(db_product: AIProduct, product: Product) -> None:
     db_product.tags = build_tags(product)
     db_product.image_url = product.image_url
     db_product.content_text = build_content_text(product)
-    db_product.source = "catalog-service"
+    db_product.source = source
     db_product.is_active = product.is_active
+
+    if previous_content != db_product.content_text or not refresh_embedding:
+        db_product.embedding = None
+    if not refresh_embedding:
+        return
 
     try:
         if db_product.content_text:
@@ -260,12 +276,26 @@ def apply_product_fields(db_product: AIProduct, product: Product) -> None:
         logger.warning("Could not generate embedding for product %s: %s", product.product_id, exc)
 
 
-def deactivate_product(db: Session, product_id: int) -> bool:
+def deactivate_product(
+    db: Session,
+    product_id: int,
+    *,
+    commit: bool = True,
+    deactivated_at: datetime | None = None,
+    source: ProductWriteSource = "unknown",
+) -> bool:
+    validate_product_write_source(source)
     product = db.get(AIProduct, product_id)
 
     if not product:
         return False
 
+    guard_seed_source_collision(product.source, source)
     product.is_active = False
-    db.commit()
+    product.source = source
+    product.available_until = deactivated_at or func.now()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return True

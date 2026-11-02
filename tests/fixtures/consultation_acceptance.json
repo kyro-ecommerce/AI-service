@@ -1,0 +1,153 @@
+{
+  "schema_version": "consultation-acceptance-v1",
+  "purpose": "development_acceptance_only",
+  "source": "explicit_synthetic_fixture",
+  "catalog_snapshot_id": "consultation-dev-catalog-v1",
+  "catalog": [
+    {"product_id": 101, "title": "Laptop A", "category_name": "laptop", "brand": "Dell", "original_price": 19999999, "ram_capacity": "16 GB"},
+    {"product_id": 102, "title": "Laptop B", "category_name": "laptop", "brand": "Dell", "original_price": 20000000, "ram_capacity": "16 GB"},
+    {"product_id": 103, "title": "Laptop C", "category_name": "laptop", "brand": "Asus", "original_price": 18000000, "ram_capacity": "8 GB"},
+    {"product_id": 104, "title": "Laptop D", "category_name": "laptop", "brand": "Lenovo", "original_price": 17000000, "ram_capacity": null},
+    {"product_id": 105, "title": "Laptop E", "category_name": "laptop", "brand": "Dell", "original_price": 21000000, "ram_capacity": "32 GB"},
+    {"product_id": 106, "title": "Phone F", "category_name": "phone", "brand": "Samsung", "original_price": 10000000, "ram_capacity": "8 GB"},
+    {"product_id": 107, "title": "Inactive Laptop G", "category_name": "laptop", "brand": "Dell", "original_price": 19000000, "ram_capacity": "16 GB", "is_active": false},
+    {"product_id": 108, "title": "Unpriced Laptop H", "category_name": "laptop", "brand": "Dell", "original_price": null, "ram_capacity": "16 GB"},
+    {"product_id": 109, "title": "Discounted Laptop I", "category_name": "laptop", "brand": "Dell", "original_price": 24000000, "discounted_price": 19000000, "ram_capacity": "16 GB"},
+    {"product_id": 110, "title": "Laptop J", "category_name": "laptop", "brand": "Asus", "original_price": 19500000, "ram_capacity": "16 GB"}
+  ],
+  "constraint_templates": {
+    "laptop": {"constraint_id": "category", "field": "category", "operator": "eq", "value": "laptop", "evidence_text": "laptop"},
+    "under20": {"constraint_id": "budget", "field": "price_vnd", "operator": "lt", "value": 20000000, "evidence_text": "dưới 20 triệu"},
+    "atmost20": {"constraint_id": "budget", "field": "price_vnd", "operator": "lte", "value": 20000000, "evidence_text": "không quá 20 triệu"},
+    "under5": {"constraint_id": "budget", "field": "price_vnd", "operator": "lt", "value": 5000000, "evidence_text": "dưới 5 triệu"},
+    "ram16": {"constraint_id": "ram", "field": "ram_gb", "operator": "gte", "value": 16, "evidence_text": "RAM ít nhất 16 GB"},
+    "dell": {"constraint_id": "brand", "field": "brand", "operator": "eq", "value": "Dell", "evidence_text": "chỉ lấy Dell"},
+    "noasus": {"constraint_id": "brand", "field": "brand", "operator": "not_in", "value": ["Asus"], "evidence_text": "không lấy Asus"}
+  },
+  "cases": [
+    {
+      "case_id": "C01_history_must_not_override_request",
+      "query": "Laptop dưới 20 triệu, RAM ít nhất 16 GB",
+      "constraints": ["laptop", "under20", "ram16"],
+      "history_preferences": [{"field": "category", "value": "phone", "source": "history"}],
+      "expected_status": "ready", "eligible_product_ids": [101, 109, 110],
+      "note": "Điện thoại 106 rẻ hơn và khớp lịch sử vẫn không đạt yêu cầu hiện tại."
+    },
+    {
+      "case_id": "C02_strict_budget_boundary",
+      "query": "Laptop dưới 20 triệu", "constraints": ["laptop", "under20"],
+      "expected_status": "ready", "eligible_product_ids": [101, 103, 104, 109, 110],
+      "note": "102 có giá đúng 20 triệu phải bị loại."
+    },
+    {
+      "case_id": "C03_inclusive_budget_boundary",
+      "query": "Laptop không quá 20 triệu", "constraints": ["laptop", "atmost20"],
+      "expected_status": "ready", "eligible_product_ids": [101, 102, 103, 104, 109, 110]
+    },
+    {
+      "case_id": "C04_missing_required_attribute",
+      "query": "Laptop RAM ít nhất 16 GB", "constraints": ["laptop", "ram16"],
+      "expected_status": "ready", "eligible_product_ids": [101, 102, 105, 108, 109, 110],
+      "note": "104 thiếu RAM không được xác nhận; thiếu giá ở 108 không vi phạm vì chưa có điều kiện giá."
+    },
+    {
+      "case_id": "C05_soft_brand_does_not_exclude",
+      "query": "Laptop dưới 20 triệu, ưu tiên Dell", "constraints": ["laptop", "under20"],
+      "preferences": [{"field": "brand", "value": "Dell", "source": "current_request", "evidence_text": "ưu tiên Dell"}],
+      "expected_status": "ready", "eligible_product_ids": [101, 103, 104, 109, 110],
+      "note": "Không chốt thứ tự cuối trước khi có policy ranking ở R3."
+    },
+    {
+      "case_id": "C06_hard_brand_excludes",
+      "query": "Laptop dưới 20 triệu, chỉ lấy Dell", "constraints": ["laptop", "under20", "dell"],
+      "expected_status": "ready", "eligible_product_ids": [101, 109]
+    },
+    {
+      "case_id": "C07_ambiguous_budget_needs_question",
+      "query": "Laptop tầm 20", "constraints": ["laptop"],
+      "unresolved_questions": ["20 là đơn vị gì và ngân sách tối đa hay khoảng giá mong muốn?"],
+      "expected_status": "needs_clarification", "eligible_product_ids": []
+    },
+    {
+      "case_id": "C08_conflicting_request_needs_question",
+      "query": "Chỉ lấy Dell, nhưng không lấy Dell", "constraints": [],
+      "unresolved_questions": ["Bạn muốn chọn hay loại thương hiệu Dell?"],
+      "expected_status": "needs_clarification", "eligible_product_ids": []
+    },
+    {
+      "case_id": "C09_no_matching_product",
+      "query": "Laptop dưới 5 triệu", "constraints": ["laptop", "under5"],
+      "expected_status": "no_match", "eligible_product_ids": [],
+      "note": "Không tự nâng ngân sách hoặc đổi sang điện thoại; nói về snapshot đang kiểm tra."
+    },
+    {
+      "case_id": "C10_new_user_has_no_history_requirement",
+      "query": "Laptop dưới 20 triệu, RAM ít nhất 16 GB", "constraints": ["laptop", "under20", "ram16"],
+      "expected_status": "ready", "eligible_product_ids": [101, 109, 110],
+      "note": "Không yêu cầu user_id hoặc lịch sử để trả lời nhu cầu đã rõ."
+    },
+    {
+      "case_id": "C11_unknown_prices_not_free",
+      "query": "Laptop dưới 20 triệu, chỉ lấy Dell", "constraints": ["laptop", "under20", "dell"],
+      "catalog_product_ids": [108], "expected_status": "no_match", "eligible_product_ids": [],
+      "note": "Nêu chưa xác nhận được giá, không nói sản phẩm chắc chắn vượt ngân sách."
+    },
+    {
+      "case_id": "C12_missing_ram_is_not_failure_claim",
+      "query": "Laptop RAM ít nhất 16 GB", "constraints": ["laptop", "ram16"],
+      "catalog_product_ids": [104], "expected_status": "no_match", "eligible_product_ids": [],
+      "note": "Nêu thiếu RAM trong dữ liệu; không tự điền 16 GB và không khẳng định RAM thực nhỏ hơn 16 GB."
+    },
+    {
+      "case_id": "C13_inactive_product_not_served",
+      "query": "Laptop dưới 20 triệu", "constraints": ["laptop", "under20"],
+      "catalog_product_ids": [107], "expected_status": "no_match", "eligible_product_ids": []
+    },
+    {
+      "case_id": "C14_catalog_unavailable",
+      "query": "Laptop dưới 20 triệu", "constraints": ["laptop", "under20"],
+      "catalog_state": "unavailable", "expected_status": "data_unavailable", "eligible_product_ids": []
+    },
+    {
+      "case_id": "C15_outside_product_scope",
+      "query": "Viết bài thơ về biển", "constraints": [],
+      "expected_status": "out_of_scope", "eligible_product_ids": []
+    },
+    {
+      "case_id": "C16_home_history_is_not_category_lock", "surface": "home",
+      "query": "", "constraints": [],
+      "history_preferences": [{"field": "category", "value": "phone", "source": "history"}],
+      "expected_status": "ready", "eligible_product_ids": [101, 102, 103, 104, 105, 106, 108, 109, 110]
+    },
+    {
+      "case_id": "C17_similar_excludes_target", "surface": "similar", "target_product_id": 101,
+      "query": "Laptop tương tự sản phẩm 101", "constraints": ["laptop"],
+      "expected_status": "ready", "eligible_product_ids": [102, 103, 104, 105, 108, 109, 110],
+      "note": "Các ID là tập trước ranking; không khẳng định mọi món tương tự ngang nhau."
+    },
+    {
+      "case_id": "C18_current_category_ambiguity",
+      "query": "Laptop hay điện thoại dưới 20 triệu, chọn giúp", "constraints": [],
+      "unresolved_questions": ["Bạn cần thiết bị cho công việc nào để chọn giữa laptop và điện thoại?"],
+      "expected_status": "needs_clarification", "eligible_product_ids": []
+    },
+    {
+      "case_id": "C19_usage_not_invented_ram_requirement",
+      "query": "Laptop để lập trình", "constraints": ["laptop"],
+      "preferences": [{"field": "usage", "value": "programming", "source": "current_request", "evidence_text": "để lập trình"}],
+      "expected_status": "ready", "eligible_product_ids": [101, 102, 103, 104, 105, 108, 109, 110]
+    },
+    {
+      "case_id": "C20_excluded_brand",
+      "query": "Laptop dưới 20 triệu, không lấy Asus", "constraints": ["laptop", "under20", "noasus"],
+      "expected_status": "ready", "eligible_product_ids": [101, 104, 109]
+    },
+    {
+      "case_id": "C21_same_decision_chat_and_stream",
+      "query": "Laptop không quá 20 triệu, RAM ít nhất 16 GB", "constraints": ["laptop", "atmost20", "ram16"],
+      "transports": ["chat", "sse"],
+      "expected_status": "ready", "eligible_product_ids": [101, 102, 109, 110],
+      "note": "Khi R4 hoàn thành: cùng snapshot/config phải trả cùng ordered IDs; fixture chưa xác định ranking."
+    }
+  ]
+}

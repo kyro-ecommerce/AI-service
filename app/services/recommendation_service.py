@@ -1,7 +1,11 @@
+import json
 import logging
+import os
+
 from sqlalchemy.orm import Session
 from app.schemas.product import Product
 from app.schemas.recommendation import RecommendationResponse
+from app.services.recommendation.caching import get_cached_recommendation
 from app.services.recommendation.ranker import (
     rerank_accessory_candidates,
     rerank_personalized_candidates,
@@ -10,7 +14,6 @@ from app.services.recommendation.ranker import (
 )
 from app.services.recommendation.retrieval import (
     retrieve_candidates_for_accessories,
-    retrieve_candidates_for_personalized,
     retrieve_candidates_for_similar,
     retrieve_candidates_for_trending,
 )
@@ -33,9 +36,6 @@ COMPLEMENTARY_CATEGORIES = {
     "phu kien": ["headphone", "mouse", "keyboard", "laptop", "phone"],
 }
 
-
-
-from app.services.recommendation.caching import get_cached_recommendation
 
 
 def find_product_by_id(products: list[Product], product_id: int) -> Product | None:
@@ -70,9 +70,6 @@ def recommend_similar_products(
 
     return get_cached_recommendation(cache_key, _compute)
 
-
-import os
-import json
 
 ACCESSORY_RULES_FILE = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "data", "accessory_rules.json")
@@ -222,19 +219,53 @@ def recommend_personalized_products(
 ) -> RecommendationResponse:
     """Two-Stage Adaptive Personalized Recommendation Pipeline based on recent interaction history & Collaborative Filtering."""
     from app.repositories.user_interaction_repository import get_user_recent_intents
-    from app.services.recommendation.collaborative import compute_user_collaborative_scores
+    from app.services.recommendation.collaborative import load_user_item_model
+
+    model = load_user_item_model()
+    if model is not None:
+        from app.schemas.recommendation import RecommendationItem
+
+        catalog = {product.product_id: product for product in products if product.is_active}
+        actor = f"user:{user_id}"
+        ranked = model.rank(actor, set(catalog), limit, hybrid=True)
+        cf_scores = model.collaborative_scores(actor, set(catalog))
+        ranking_scores = model.scores(actor, set(catalog), hybrid=True)
+        items = [
+            RecommendationItem(
+                product_id=product_id,
+                title=catalog[product_id].title,
+                category_name=catalog[product_id].category_name,
+                brand=catalog[product_id].brand,
+                category_id=catalog[product_id].category_id,
+                original_price=catalog[product_id].original_price,
+                discounted_price=catalog[product_id].discounted_price,
+                average_rating=catalog[product_id].average_rating,
+                image_url=catalog[product_id].image_url,
+                score=round(ranking_scores[product_id], 6),
+                reason=(
+                    "Gợi ý từ tương tác sản phẩm của những người có lịch sử tương đồng"
+                    if product_id in cf_scores else "Phổ biến theo lịch sử tương tác"
+                ),
+            )
+            for product_id in ranked
+        ]
+        return RecommendationResponse(
+            target_product_id=user_id,
+            strategy="hybrid_item_knn_popularity" if cf_scores else "user_item_popularity_fallback",
+            recommendations=items,
+        )
 
     user_intents = get_user_recent_intents(db, user_id)
-    cf_scores = compute_user_collaborative_scores(user_id=user_id, products=products, db=db)
 
-    candidates = retrieve_candidates_for_personalized(products=products, user_intents=user_intents, limit=20)
+    # Rank the full active catalog before truncating.
+    candidates = [product for product in products if product.is_active]
 
 
     return rerank_personalized_candidates(
         user_id=user_id,
         candidates=candidates,
         user_intents=user_intents,
-        cf_scores=cf_scores,
+        cf_scores=None,
         limit=limit,
     )
 

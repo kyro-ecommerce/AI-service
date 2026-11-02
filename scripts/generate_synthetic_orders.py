@@ -1,7 +1,8 @@
-"""Synthetic Orders & User Interaction Generator for AI Service offline training & evaluation.
+"""Synthetic demo generator with explicit latent user-preference segments.
 
 Generates realistic e-commerce order baskets (complementary product patterns like Laptop + Mouse + Headphone)
-and user interaction records (VIEW, SEARCH, CHAT, ADD_TO_CART, PURCHASE) for FP-Growth and Collaborative Filtering.
+The output is for pipeline tests, never thesis evidence. Users belong to
+deterministic category/brand segments so the demo has a recoverable signal.
 """
 
 import json
@@ -111,28 +112,59 @@ def generate_synthetic_dataset():
                 "created_at": order_time,
             })
 
-    # 2. Generate 1000 User Interactions
-    interaction_types = ["VIEW", "SEARCH", "CHAT", "ADD_TO_CART", "PURCHASE"]
-    type_weights = [0.4, 0.2, 0.15, 0.15, 0.1]
+    # 2. Generate 1000 attributed events from explicit latent segments.
+    segment_pools: dict[tuple[str, str], list[dict]] = {}
+    for product in products:
+        category = (product.get("category_name") or product.get("category") or "other").lower()
+        brand = (product.get("brand") or "unknown").lower()
+        segment_pools.setdefault((category, brand), []).append(product)
+
+    segment_keys = sorted(segment_pools)
+    user_profiles = {
+        user_id: segment_keys[(user_id - 1) % len(segment_keys)]
+        for user_id in range(1, 151)
+    }
+    interaction_types = ["IMPRESSION", "CLICK", "VIEW", "ADD_TO_CART", "PURCHASE"]
+    type_weights = [0.25, 0.20, 0.25, 0.18, 0.12]
 
     for i in range(1000):
         uid = random.randint(1, 150)
         itype = random.choices(interaction_types, weights=type_weights)[0]
         days_ago = random.uniform(0.01, 20.0)
-        created_at = (now - timedelta(days=days_ago)).isoformat()
+        occurred_at = now - timedelta(days=days_ago)
 
-        target_p = random.choice(products)
+        preferred_category, preferred_brand = user_profiles[uid]
+        sampling_roll = random.random()
+        if sampling_roll < 0.80:
+            target_p = random.choice(segment_pools[(preferred_category, preferred_brand)])
+        elif sampling_roll < 0.95:
+            target_p = random.choice(by_category[preferred_category])
+        else:
+            target_p = random.choice(products)
         cat = (target_p.get("category_name") or target_p.get("category") or "electronics").lower()
         title = target_p.get("title") or target_p.get("name") or ""
 
         interactions.append({
             "id": i + 1,
+            "event_id": f"synthetic-event-{i + 1:05d}",
             "user_id": uid,
+            "session_id": f"synthetic-session-{uid}-{int(days_ago // 2):02d}",
             "interaction_type": itype,
             "query_text": f"Tìm kiếm {cat} {title[:15]}",
             "category_intents": [cat],
             "product_id": target_p["product_id"],
-            "created_at": created_at,
+            "occurred_at": occurred_at.isoformat(),
+            "occurred_at_source": "event_provided",
+            "created_at": occurred_at.isoformat(),
+            "request_id": f"synthetic-request-{i + 1:05d}",
+            "recommendation_id": f"synthetic-rec-{i + 1:05d}",
+            "position": random.randint(0, 9),
+            "model_version": "synthetic-latent-demo-v1",
+            "context_data": {
+                "source": "synthetic_latent_demo",
+                "preferred_category": preferred_category,
+                "preferred_brand": preferred_brand,
+            },
         })
 
     # Save to JSON files
@@ -145,23 +177,39 @@ def generate_synthetic_dataset():
     # Seed into PostgreSQL DB if available
     try:
         from app.db.session import SessionLocal
-        from app.db.models import UserInteraction
+        from app.repositories.user_interaction_repository import record_user_interaction
 
         with SessionLocal() as db:
             count = 0
-            for item in interactions[:200]:
-                created_dt = datetime.fromisoformat(item["created_at"])
-                ui = UserInteraction(
+            duplicate_count = 0
+            for item in interactions:
+                recorded = record_user_interaction(
+                    db=db,
                     user_id=item["user_id"],
                     interaction_type=item["interaction_type"],
                     query_text=item["query_text"],
                     category_intents=item["category_intents"],
-                    created_at=created_dt,
+                    product_id=item["product_id"],
+                    session_id=item["session_id"],
+                    event_id=item["event_id"],
+                    occurred_at=datetime.fromisoformat(item["occurred_at"]),
+                    context_data=item["context_data"],
+                    request_id=item["request_id"],
+                    recommendation_id=item["recommendation_id"],
+                    position=item["position"],
+                    model_version=item["model_version"],
+                    commit=False,
+                    raise_on_error=True,
                 )
-                db.add(ui)
-                count += 1
+                if recorded:
+                    count += 1
+                else:
+                    duplicate_count += 1
             db.commit()
-            print(f"Successfully seeded {count} user interactions into PostgreSQL DB!")
+            print(
+                f"Seeded {count} synthetic demo interactions; "
+                f"skipped {duplicate_count} duplicates."
+            )
     except Exception as exc:
         print(f"PostgreSQL DB seed skipped (DB offline or unavailable: {exc})")
 
