@@ -1,216 +1,87 @@
-# Kyro AI Service — Enterprise AI Engine & Hybrid Recommendation System
+# Kyro AI Service
 
-[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115.6-green.svg)](https://fastapi.tiangolo.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-blue.svg)](https://github.com/pgvector/pgvector)
-[![Redis](https://img.shields.io/badge/Redis-Distributed%20Cache-red.svg)](https://redis.io/)
-[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-Async%20Clickstream-orange.svg)](https://www.rabbitmq.com/)
-[![Pytest](https://img.shields.io/badge/Tests-50%2F50%20Passed-brightgreen.svg)]()
-[![SLA TTFT](https://img.shields.io/badge/TTFT-%3C%20200ms-purple.svg)]()
-[![Cache SLA](https://img.shields.io/badge/Cache%20Hit-%3C%2010ms-brightgreen.svg)]()
+FastAPI shopping consultation, search and recommendation prototype.
+Current status: 2026-11-02. This is not a verified production system or a completed thesis evaluation.
 
-> A high-throughput, fault-tolerant **Enterprise AI Engine** powering real-time **Server-Sent Events (SSE) Streaming RAG Chatbots**, **PostgreSQL Pgvector HNSW Index Search**, **Two-Stage Personalized Recommendations**, **Redis Distributed Caching**, and **Async RabbitMQ Event Ingestion**.
+## Current chat core
 
----
+JSON chat and SSE share one decision path:
 
-## 📌 Executive Architecture & System Design
+`message -> requirements -> hard-condition checks -> matching SKUs -> ranking -> explanation`
 
-The **Kyro AI Service** is an autonomous microservice built to solve traditional e-Commerce AI bottlenecks (high TTFT latency, LLM token explosion, stateful caching drifts, and offline recommendation staleness):
+- Clear rules, conversational filler and explicit aliases are handled locally.
+  Optional LLM interpretation proposes structured requirements when needed.
+- Conditions retain input evidence. Price and capacities must come from the SAME SKU.
+- Missing optional budget/brand does not block initial suggestions; ask a follow-up.
+  Unclear mandatory conditions or contradictions are not silently discarded.
+- Name-derived capacities remain proposals with `verified=False`, not verified hardware.
+- SSE transports a completed shared response, not provider-token streaming.
+  The old ReAct/LangChain agent path and QA knowledge store have been retired.
 
-```mermaid
-flowchart TD
-    subgraph Edge ["Edge & API Gateway"]
-        GW["Spring Cloud API Gateway\n(Token Bucket Rate Limiter: 10 req/s)"]
-    end
+See [natural-language behavior](docs/natural-language-consultation-v1.md),
+[SKU contract](docs/catalog-sku-contract-v1.md), and
+[cleanup history](docs/legacy-code-retirement.md).
 
-    subgraph Service ["AI Service (FastAPI 0.115.6)"]
-        StreamEngine["SSE Streaming Engine\n(TTFT < 200ms & 20ms Fallback)"]
-        RAG["Pgvector HNSW Retrieval\n(Cosine Distance Search < 5ms)"]
-        RecSys["Two-Stage Hybrid RecSys\n(Candidate Retrieval + Adaptive Re-ranker)"]
-        CacheLayer["Distributed Redis Cache\n(Millisecond TTL & Local Fallback)"]
-        Consumer["RabbitMQ Clickstream Consumer\n(Async Event Ingestion)"]
-    end
+## Local setup
 
-    subgraph Storage ["Infrastructure & Storage"]
-        PG[(PostgreSQL + pgvector HNSW)]
-        Redis[(Redis Cache Server)]
-        RabbitMQ[(RabbitMQ Broker)]
-    end
+Python 3.11 is used by Docker/CI. PostgreSQL with pgvector is required for serving.
+Redis and RabbitMQ support caching/events. Backend fields/APIs are unchanged.
 
-    GW -->|/api/v1/ai/chat/stream| StreamEngine
-    GW -->|/api/v1/ai/recommendations| RecSys
-    GW -->|/api/v1/ai/metrics| StreamEngine
-
-    StreamEngine --> RAG --> PG
-    RecSys <--> CacheLayer <--> Redis
-    RabbitMQ -->|user.product.viewed / user.cart.added| Consumer
-    Consumer -->|Session Intent Boost x1.45| RecSys
-```
-
----
-
-## ⚡ Core Architectural Pillars
-
-### 1. Server-Sent Events (SSE) Streaming & Graceful Fallback
-- **Token Delivery**: Emits chunked token events via `text/event-stream` (`POST /api/v1/ai/chat/stream`), reducing Time-to-First-Token (TTFT) from >5s to **<200ms**.
-- **Resilient Fallback**: Upon encountering upstream Gemini API rate limits (`HTTP 429`), seamlessly switches to local domain knowledge, emitting words at 20ms intervals for zero UX disruption.
-
-### 2. Database-Native Pgvector HNSW Index Search
-- **SQL Vector Search**: Offloads vector cosine distance calculations to PostgreSQL `pgvector` HNSW indices (`AIProduct.embedding.cosine_distance`), retrieving Top 3–5 candidates in **< 5ms**.
-- **Token Efficiency**: Reduces LLM context sizes by 70%, eliminating prompt overflow and minimizing API costs.
-
-### 3. Two-Stage Adaptive Recommendation Engine
-- **Stage 1 (Retrieval)**: Filters active candidates using vector similarity, SVD Matrix Factorization, and category intent matching.
-- **Stage 2 (Re-ranking)**: Multi-objective scoring combining exponential time-decay weighting, rating volume, and real-time session intent multipliers (**+1.45x boost**).
-
-### 4. Distributed Redis Caching Layer
-- **High-Throughput Caching**: Serializes recommendation payloads with Pydantic (`model_dump_json`) stored in Redis with millisecond TTLs (**<10ms hit latency**).
-- **Failover Guarantee**: Gracefully falls back to a thread-safe local memory store if Redis connection ping fails.
-
-### 5. Asynchronous Clickstream Event Ingestion
-- **Event-Driven Integration**: Decouples clickstream ingestion (`user.product.viewed`, `user.cart.added`, `user.order.completed`) via RabbitMQ topic exchange `product.events`.
-- **Cache Invalidation**: Automatically flushes stale RecSys cache entries upon product catalog mutations.
-
----
-
-## 📊 Offline Evaluation & Performance SLAs
-
-### 1. Offline Recommendation Metrics (`scripts/evaluate_recsys.py`)
-
-| Metric | Baseline Model (Popularity) | Hybrid RecSys Model | Strategic Gain |
-| :--- | :---: | :---: | :---: |
-| **NDCG@5** (Normalized Discounted Cumulative Gain) | `0.4996` | **`1.0000`** | 🔥 **+100.2%** |
-| **Precision@5** (Relevance Ratio) | `0.2667` | **`0.4667`** | 🚀 **+75.0%** |
-| **Recall@5** (Item Coverage) | `0.6111` | **`1.0000`** | 🎯 **+63.6%** |
-| **Hit Rate@5** (Hit Ratio) | `1.0000` | **`1.0000`** | 🟢 **100.0%** |
-| **Catalog Coverage** | `0.6250` | **`1.0000`** | 📈 **+60.0%** |
-
-### 2. System Service Level Agreements (SLAs)
-
-| Subsystem Operation | Target Latency / SLA | Architecture Enabler |
-| :--- | :---: | :--- |
-| **Chatbot Time-To-First-Token (TTFT)** | **< 200 ms** | FastAPI Async SSE Stream Engine |
-| **Pgvector Candidate Retrieval** | **< 5 ms** | Direct PostgreSQL HNSW Index Execution |
-| **RecSys Cache Hit Latency** | **< 10 ms** | Redis Distributed JSON Caching |
-| **Clickstream Processing** | **100% Non-blocking** | Async RabbitMQ Topic Consumer |
-| **Automated Test Coverage** | **50 / 50 Passed (100%)** | Pytest Benchmark Suite |
-
----
-
-## 📁 Repository Structure
-
-```txt
-ai-service/
-├── app/
-│   ├── main.py                       # FastAPI application entrypoint & lifecycle handlers
-│   ├── core/
-│   │   └── config.py                 # App settings (Redis, Postgres, RabbitMQ URIs)
-│   ├── db/
-│   │   ├── models.py                 # SQLAlchemy AIProduct & UserInteraction ORM models
-│   │   └── session.py                # Database SessionLocal dependency
-│   ├── routes/
-│   │   ├── chat.py                   # /chat/stream SSE & /chat/feedback endpoints
-│   │   ├── health.py                 # /health & /metrics endpoints
-│   │   ├── products.py               # Vector product sync & search endpoints
-│   │   ├── recommendations.py        # Trending, Similar, Accessory & Personalized RecSys
-│   │   └── search.py                 # Hybrid RRF Search endpoint
-│   ├── services/
-│   │   ├── chat_service.py           # RAG Engine, Gemini SSE & Fallback Stream
-│   │   ├── search_service.py         # Reciprocal Rank Fusion (RRF) Search
-│   │   ├── event_consumer.py         # Async RabbitMQ Clickstream Event Consumer
-│   │   └── recommendation/
-│   │       ├── retrieval.py          # Stage 1 Candidate Generation
-│   │       ├── ranker.py             # Stage 2 Adaptive Re-ranking & Session Intent Boost
-│   │       ├── collaborative.py      # Implicit SVD Matrix Factorization
-│   │       └── caching.py            # Redis Distributed Cache & Local Memory Fallback
-├── tests/                            # Comprehensive Production Test Suite
-│   ├── test_chat_api.py
-│   ├── test_event_consumer.py
-│   ├── test_performance_benchmark.py # Sub-10ms Cache & Latency Benchmark Suite
-│   ├── test_caching.py
-│   └── test_recommendations.py
-├── Dockerfile
-├── docker-compose.yml
-└── requirements.txt
-```
-
----
-
-## ⚡ Setup & Execution Guide
-
-### 1. Virtual Environment Installation
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 ```
 
-### 2. Launch Local Server
+Create your own `.env` from `.env.example`; do not overwrite an existing local
+configuration or commit credentials. Set URLs for your environment. Supply a
+Gemini key only if external calls are intended; model availability is project-specific.
+
+After reviewing and approving the target DB, apply migrations and start the API:
+
 ```powershell
-python -m uvicorn app.main:app --reload
+.\.venv\Scripts\alembic.exe upgrade head
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
-- Swagger OpenAPI Specs: `http://localhost:8000/docs`
-- Health Endpoint: `http://localhost:8000/api/v1/ai/health`
-- Prometheus Metrics Endpoint: `http://localhost:8000/api/v1/ai/metrics`
 
-### 3. Run Automated Unit & Benchmark Test Suite
+Docker Compose web startup also invokes `alembic upgrade head`.
+No generated catalog is seeded on startup. A fresh clone does NOT contain the
+local 15-SKU DB snapshot; supply a catalog through guarded sync/event paths.
+An unavailable DB is not silently replaced by generated JSON.
+
+- Docs: `http://localhost:8000/docs`
+- Liveness/readiness: `/api/v1/ai/live`, `/api/v1/ai/ready`
+- Chat/SSE: `POST /api/v1/ai/chat`, `POST /api/v1/ai/chat/stream`
+
+Mutation/user-specific routes require trusted backend credentials. Do not expose
+`INTERNAL_API_TOKEN` to browsers, trust browser user IDs or disable auth to
+work around the incomplete signed-in identity bridge.
+
+## Recommendation and support workflows
+
+Similar/accessory/trending/personalized routes and Item-KNN remain. Serving and
+offline evaluation share the user-item model. Search/embedding still has callers;
+encoding requires a verified revision. Chat ranking is keyword-only.
+
+Evaluation/training and ingestion dry-run are supporting workflows, not proof
+of real-world quality. Legacy FP-Growth still has a synthetic-generation chain;
+do not treat it as a verified-data training pipeline. The old standalone
+`scripts/run_consumer.py` needs separate repair; FastAPI starts its active consumer.
+Embedding provenance integration and the Docker model-preload layer are unfinished.
+
+## Verification and remaining limits
+
 ```powershell
-python -m pytest tests/
+$env:GEMINI_API_KEY = ' '
+$env:OPENROUTER_API_KEY = ' '
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m ruff check app scripts tests migrations tools
 ```
 
-### 4. Execute Offline RecSys Evaluation Benchmark
-```powershell
-python scripts/evaluate_recsys.py
-```
+Default tests use infrastructure/model doubles. They do not establish live LLM
+quality, production latency or thesis results. Independent query evaluation,
+multi-turn memory, frontend SSE checks and authenticated identity remain open.
+Catalog prices can be suspicious; active/stock/price are not checkout guarantees.
+Stock-zero handling and generated qualitative claims still need evaluation.
 
----
-
-## 🔌 API Payload Contract Highlights
-
-### 1. Real-time SSE Chat Stream Endpoint
-`POST /api/v1/ai/chat/stream`
-
-**Payload**:
-```json
-{
-  "message": "Tư vấn cho mình laptop mỏng nhẹ dưới 20 triệu",
-  "limit": 5,
-  "user_id": 1
-}
-```
-
-**Stream Response (`200 OK`, `text/event-stream`)**:
-```txt
-data: {"type": "metadata", "recommended_products": [{"product_id": 10, "title": "ASUS Zenbook 14", "discounted_price": 18990000, "average_rating": 4.8}]}
-data: {"type": "chunk", "content": "Dưới "}
-data: {"type": "chunk", "content": "đây "}
-data: {"type": "chunk", "content": "là "}
-data: {"type": "done"}
-```
-
-### 2. Explicit User Feedback Endpoint
-`POST /api/v1/ai/chat/feedback`
-
-**Payload**:
-```json
-{
-  "user_id": 1,
-  "message_text": "Tư vấn laptop 16GB RAM",
-  "feedback": "thumbs_up"
-}
-```
-
-### 3. Health & System Metrics Endpoint
-`GET /api/v1/ai/metrics`
-
-**Response (`200 OK`)**:
-```json
-{
-  "service": "ai-service",
-  "version": "1.0.0",
-  "database_status": "connected",
-  "cache_backend": "redis",
-  "recommendation_cache_items": 14,
-  "status": "healthy"
-}
-```
+Older inherited documents/notebooks are historical, not current implementation claims.
+Local phase reports, generated datasets, secrets and backups are not published here.

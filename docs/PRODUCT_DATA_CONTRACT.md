@@ -1,126 +1,34 @@
-# Product Data Contract
+# Product data contract
 
-## Muc Tieu
+Current status: 2026-11-02. Backend fields/APIs are unchanged.
 
-File nay dinh nghia format san pham ma Backend Catalog Service gui sang AI Service.
+`AIProduct.product_id` refers to the backend catalog product ID. Seller/category/user
+IDs are cross-service identifiers, not foreign keys into another service database.
 
-Field quan trong nhat:
+## Ingestion and provenance
 
-```txt
-product_id
-```
+`ai_products.source` labels the write path: json-seed, internal-sync,
+catalog-service, catalog-event, legacy-unverified, or unknown. These labels do not
+verify real-world origin, freshness or authenticity. Payloads cannot assert their
+own trusted source. Seed/service ID collisions require controlled reconciliation.
 
-`product_id` phai trung voi `catalog.product.id` ben backend de frontend/backend co the mapping lai ket qua AI.
+No generated JSON catalog is loaded on startup or on DB failure.
+`scripts/seed_products.py` is a manual development workflow: preview by default,
+persistence only with explicit `--apply`. Do not execute it to populate a demo
+without reviewing the source and target DB.
 
-AI Service co database rieng. Cac ID tu service khac nhu `seller_id`, `category_id` chi la cross-service IDs, khong tao foreign key sang database cua service khac.
+## Product and SKU facts
 
-## Source Of Truth Cho Specs
+Product identity, title, category, brand, prices, ratings, descriptions and flat
+specs form a shared catalog snapshot. Missing/conflicting capacities are not
+confirmed matches. Titles/popularity do not establish missing specifications.
 
-Project hien tai chi ban do dien tu, nen Catalog Service gui thong so ky thuat san pham bang cac field flat nhu `ram_capacity`, `rom_capacity`, `screen_size`, `battery_capacity`.
+`specs` JSONB includes reserved structured SKU snapshots. Parent minimum prices
+must not be paired with an arbitrary variant's configuration. Active flags,
+sales counts and colors do not establish stock, delivery, warranty or checkout.
 
-Trong AI Service, 9 cot spec rieng le la canonical snapshot lay tu Catalog Service:
-
-```txt
-battery_capacity
-battery_type
-color
-connection_port
-dimension
-ram_capacity
-rom_capacity
-screen_size
-weight
-```
-
-Cot `specs JSONB` trong `ai_products` la du lieu dan xuat de phuc vu search, `content_text`, va embedding sau nay. `specs` duoc build lai tu payload bang `build_specs()`, khong phai source of truth doc lap.
-
-Neu payload co ca flat field va key trung trong `specs`, flat field se thang. Vi du `ram_capacity = "16GB"` va `specs.ram_capacity = "8GB"` thi AI Service luu `specs.ram_capacity = "16GB"`.
-
-## Payload Mau
-
-```json
-{
-  "product_id": 1,
-  "title": "Lenovo IdeaPad Slim 5",
-  "category_id": 10,
-  "category_name": "laptop",
-  "brand": "Lenovo",
-  "original_price": 18990000,
-  "discounted_price": 17990000,
-  "discount_percent": 5,
-  "average_rating": 4.7,
-  "num_ratings": 32,
-  "quantity_sold": 120,
-  "seller_id": 5,
-  "description": "Laptop mong nhe cho sinh vien va lap trinh co ban",
-  "detailed_review": "Man hinh dep, ban phim tot.",
-  "powerful_performance": "Phu hop hoc tap, van phong va lap trinh.",
-  "ram_capacity": "16GB",
-  "rom_capacity": "512GB",
-  "screen_size": "14 inch",
-  "battery_capacity": "56Wh",
-  "color": "Grey",
-  "tags": ["student", "programming", "office", "lightweight"],
-  "image_url": "https://example.com/images/laptop-001.jpg",
-  "is_active": true
-}
-```
-
-## Field Can Co
-
-| Field | Bat buoc | Mapping |
-| --- | --- | --- |
-| product_id | Co | `catalog.product.id` |
-| title | Co | `catalog.product.title` |
-| category_id | Khuyen nghi | `catalog.product.category_id` |
-| category_name | Khuyen nghi | `catalog.category.name` neu backend join duoc |
-| brand | Khuyen nghi | `catalog.product.brand` |
-| original_price | Khuyen nghi | `catalog.product.price` |
-| discounted_price | Khuyen nghi | `catalog.product.discounted_price` |
-| discount_percent | Khuyen nghi | `catalog.product.discount_persent` |
-| average_rating | Khuyen nghi | `catalog.product.average_rating` |
-| num_ratings | Khuyen nghi | `catalog.product.num_ratings` |
-| quantity_sold | Khuyen nghi | `catalog.product.quantity_sold` |
-| seller_id | Khuyen nghi | `catalog.product.seller_id` |
-| description | Khuyen nghi | `catalog.product.description` |
-| detailed_review | Khuyen nghi | `catalog.product.detailed_review` |
-| powerful_performance | Khuyen nghi | `catalog.product.powerful_performance` |
-| ram_capacity | Khuyen nghi | `catalog.product.ram_capacity` |
-| rom_capacity | Khuyen nghi | `catalog.product.rom_capacity` |
-| screen_size | Khuyen nghi | `catalog.product.screen_size` |
-| battery_capacity | Khuyen nghi | `catalog.product.battery_capacity` |
-| battery_type | Khuyen nghi | `catalog.product.battery_type` |
-| color | Khuyen nghi | `catalog.product.color` |
-| connection_port | Khuyen nghi | `catalog.product.connection_port` |
-| dimension | Khuyen nghi | `catalog.product.dimension` |
-| weight | Khuyen nghi | `catalog.product.weight` |
-| image_url | Khuyen nghi | `catalog.image.download_url`, nen gui anh dai dien |
-| is_active | Khuyen nghi | true neu san pham con hien thi |
-
-## Compatibility
-
-AI Service van chap nhan mot so field Week 1 de de seed/demo:
-
-```txt
-id -> product_id
-name -> title
-category -> category_name
-price -> original_price
-discount_persent -> discount_percent
-```
-
-## Content Text
-
-AI Service se tao `content_text` tu product payload.
-
-Vi du:
-
-```txt
-Lenovo IdeaPad Slim 5. Category: laptop. Brand: Lenovo.
-Original price: 18990000. Discounted price: 17990000.
-Description: Laptop mong nhe cho sinh vien va lap trinh co ban.
-Specs: ram_capacity 16GB, rom_capacity 512GB, screen_size 14 inch.
-Tags: student, programming, office, lightweight.
-```
-
-Sau nay `content_text` se duoc dung de tao embedding.
+See [SKU contract](catalog-sku-contract-v1.md). The AI-only
+`catalog_variants_v1` stores variant ID/SKU, its own prices and source information.
+Capacities parsed from supported laptop names are separate proposals with
+`verified=False`, not independently verified hardware specifications.
+The frontend still opens a product page where the intended SKU must be selected.
