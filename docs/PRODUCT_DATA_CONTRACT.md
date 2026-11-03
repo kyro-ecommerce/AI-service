@@ -17,6 +17,25 @@ No generated JSON catalog is loaded on startup or on DB failure.
 persistence only with explicit `--apply`. Do not execute it to populate a demo
 without reviewing the source and target DB.
 
+## Product interaction dimensions
+
+New VIEW/CLICK/ADD_TO_CART/PURCHASE writes require a positive integer product_id
+and an actor (positive user_id or non-blank session_id). The generic internal
+record API rejects incomplete payloads with 422; identifiers reject booleans,
+coerced strings and values outside signed BigInt range. Session whitespace is
+trimmed. The repository applies the same guard after legacy action aliases are
+normalized, before deduplication/persistence. Invalid internal writes raise when
+requested or return False otherwise. SEARCH/CHAT remain allowed without an item
+or actor; IMPRESSION/feedback behavior is unchanged in this scoped guard.
+
+These checks do not authenticate a browser, prove a purchase, validate catalog
+membership or provide missing event lineage. The internal-token requirement is
+unchanged. Old FE order-only payloads will fail instead of creating unusable
+item events. Gateway identity and order-event integration remain separate work;
+never expose internal credentials or turn recommended IDs into positive actions.
+Existing records are not modified/backfilled. Event IDs/timestamps retain their
+existing contract; passing this guard alone does not establish training readiness.
+
 ## Product and SKU facts
 
 Product identity, title, category, brand, prices, ratings, descriptions and flat

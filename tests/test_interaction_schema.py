@@ -71,6 +71,7 @@ def test_event_id_prevents_duplicate_interaction() -> None:
         interaction_type="VIEW",
         query_text="duplicate delivery",
         event_id="evt-duplicate",
+        product_id=100,
     )
 
     assert not recorded
@@ -122,7 +123,7 @@ def test_interaction_api_schema_rejects_unknown_action_and_negative_position() -
 def test_missing_event_time_is_marked_server_recorded() -> None:
     db = MagicMock()
     db.scalars.return_value.first.return_value = None
-    assert record_user_interaction(db, 42, "VIEW", "view", event_id="server-time")
+    assert record_user_interaction(db, 42, "VIEW", "view", product_id=100, event_id="server-time")
     row = db.add.call_args.args[0]
     assert row.occurred_at_source == "server_recorded"
     assert row.occurred_at == row.received_at
@@ -132,7 +133,8 @@ def test_repository_rejects_naive_time_before_persisting() -> None:
     db = MagicMock()
     with pytest.raises(ValueError, match="timezone"):
         record_user_interaction(
-            db, 42, "VIEW", "view", occurred_at=datetime(2026, 1, 1), raise_on_error=True,
+            db, 42, "VIEW", "view", product_id=100,
+            occurred_at=datetime(2026, 1, 1), raise_on_error=True,
         )
     db.add.assert_not_called()
 
@@ -141,7 +143,7 @@ def test_event_contracts_require_timezone_when_timestamp_supplied() -> None:
     from app.schemas.user_event import UserProductEvent
 
     with pytest.raises(ValidationError):
-        InteractionRecordRequest(occurred_at="2026-01-01T12:00:00")
+        InteractionRecordRequest(interaction_type="SEARCH", occurred_at="2026-01-01T12:00:00")
     with pytest.raises(ValidationError):
         UserProductEvent(
             event_id="event-timezone", event_type="UserViewed", user_id=1,

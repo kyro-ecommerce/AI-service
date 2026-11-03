@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.models import UserInteraction
 from app.db.session import SessionLocal
 from app.core.event_time import parse_aware_timestamp
+from app.schemas.user_event import validate_product_interaction_dimensions
 
 logger = logging.getLogger("ai-service.repository.user_interaction")
 
@@ -65,6 +66,9 @@ def record_user_interaction(
 
     try:
         normalized_interaction_type = normalize_interaction_type(interaction_type)
+        validate_product_interaction_dimensions(
+            normalized_interaction_type, user_id, product_id, session_id,
+        )
         # Anti-duplicate check: ignore exact same interaction within dedup_window_seconds
         now = datetime.now(timezone.utc)
         event_time = parse_aware_timestamp(occurred_at) if occurred_at is not None else now

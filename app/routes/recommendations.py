@@ -2,13 +2,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.db.session import get_db
 from app.core.security import RequestIdentity, get_request_identity, require_internal_request
 from app.db.models import AIProduct
 from app.repositories.product_repository import list_active_products_safe
 from app.schemas.recommendation import RecommendationResponse
+from app.schemas.user_event import validate_product_interaction_dimensions
 from app.services.recommendation_service import (
     recommend_accessories,
     recommend_personalized_products,
@@ -87,7 +88,9 @@ def get_complementary_recommendations(
 
 
 class InteractionRecordRequest(BaseModel):
-    user_id: int = 0
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    user_id: int = Field(default=0, ge=0, le=2**63 - 1, strict=True)
     interaction_type: Literal[
         "VIEW",
         "CLICK",
@@ -99,7 +102,7 @@ class InteractionRecordRequest(BaseModel):
     ] = "VIEW"
     query_text: str = ""
     category_name: str = ""
-    product_id: int | None = Field(default=None, gt=0)
+    product_id: int | None = Field(default=None, gt=0, le=2**63 - 1, strict=True)
     session_id: str | None = Field(default=None, max_length=128)
     event_id: str | None = Field(default=None, max_length=255)
     occurred_at: AwareDatetime | None = None
@@ -107,6 +110,13 @@ class InteractionRecordRequest(BaseModel):
     recommendation_id: str | None = Field(default=None, max_length=255)
     position: int | None = Field(default=None, ge=0)
     model_version: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def require_product_action_dimensions(self) -> "InteractionRecordRequest":
+        validate_product_interaction_dimensions(
+            self.interaction_type, self.user_id, self.product_id, self.session_id,
+        )
+        return self
 
 
 class ProductViewRecordRequest(BaseModel):
