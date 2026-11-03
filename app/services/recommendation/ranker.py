@@ -9,6 +9,21 @@ from app.services.search_service import calculate_cosine_similarity, normalize_t
 
 logger = logging.getLogger("ai-service.recommendation.ranker")
 
+# Historical baseline only, not a measured catalog mean or a review claim.
+_UNRATED_RANKING_PRIOR = 4.0
+
+
+def _observed_catalog_rating(product: Product) -> float | None:
+    """BE reviews are 1..5; aggregate and count must both support the rating."""
+    if product.num_ratings > 0 and 1 <= product.average_rating <= 5:
+        return product.average_rating
+    return None
+
+
+def _rating_for_ranking(product: Product) -> float:
+    rating = _observed_catalog_rating(product)
+    return rating if rating is not None else _UNRATED_RANKING_PRIOR
+
 
 def parse_numeric_spec(val: Any) -> float | None:
     if not val:
@@ -22,57 +37,62 @@ def parse_numeric_spec(val: Any) -> float | None:
     return None
 
 
+def parse_capacity_gb(val: str | None) -> float | None:
+    """Read one explicit capacity using SI (1 TB = 1000 GB).
+
+    Bare numbers, binary units and compound configurations are unknown, not
+    inferred. Optional SSD/HDD labels describe the medium, not the capacity.
+    This is a similarity input, not verification of a catalog specification.
+    """
+    if not isinstance(val, str) or len(val) > 128:
+        return None
+    match = re.fullmatch(
+        r"\s*([0-9]+(?:[.,][0-9]+)?)\s*(GB|TB)(?:\s+(?:SSD|HDD))?\s*",
+        val,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    capacity = float(match[1].replace(",", "."))
+    if match[2].upper() == "TB":
+        capacity *= 1000
+    return capacity if math.isfinite(capacity) and capacity > 0 else None
+
+
 def calculate_spec_similarity(target: Product, candidate: Product) -> tuple[float, list[str]]:
-    """Calculates configuration and specification similarity score between target and candidate."""
-    matched_features = []
-    scores = []
+    """Score supported flat specs against the target's known dimensions.
 
-    # 1. RAM Capacity Comparison
-    t_ram = parse_numeric_spec(target.ram_capacity)
-    c_ram = parse_numeric_spec(candidate.ram_capacity)
-    if t_ram and c_ram:
-        if t_ram == c_ram:
-            scores.append(1.0)
-            matched_features.append(f"RAM {int(t_ram)}GB")
+    Missing candidate values add no evidence but remain in the denominator.
+    No target dimensions means zero spec contribution, not zero suitability.
+    Untyped specs JSON (including SKU snapshots/provenance) is not compared.
+    """
+    matched_features: list[str] = []
+    scores: list[float] = []
+
+    for field, label in (("ram_capacity", "RAM"), ("rom_capacity", "Bộ nhớ")):
+        target_value = parse_capacity_gb(getattr(target, field))
+        if target_value is None:
+            continue
+        candidate_value = parse_capacity_gb(getattr(candidate, field))
+        if candidate_value is None:
+            scores.append(0.0)
         else:
-            diff_ratio = min(t_ram, c_ram) / max(t_ram, c_ram)
-            scores.append(diff_ratio)
+            scores.append(min(target_value, candidate_value) / max(target_value, candidate_value))
+            if target_value == candidate_value:
+                matched_features.append(f"{label} {target_value:g}GB")
 
-    # 2. ROM / Storage Capacity Comparison
-    t_rom = parse_numeric_spec(target.rom_capacity)
-    c_rom = parse_numeric_spec(candidate.rom_capacity)
-    if t_rom and c_rom:
-        if t_rom == c_rom:
+    target_screen = parse_numeric_spec(target.screen_size)
+    candidate_screen = parse_numeric_spec(candidate.screen_size)
+    if target_screen is not None and math.isfinite(target_screen) and target_screen > 0:
+        if candidate_screen is None or not math.isfinite(candidate_screen) or candidate_screen <= 0:
+            scores.append(0.0)
+        elif abs(target_screen - candidate_screen) < 0.5:
             scores.append(1.0)
-            matched_features.append(f"Bộ nhớ {int(t_rom)}GB")
-        else:
-            diff_ratio = min(t_rom, c_rom) / max(t_rom, c_rom)
-            scores.append(diff_ratio)
-
-    # 3. Screen Size Proximity
-    t_screen = parse_numeric_spec(target.screen_size)
-    c_screen = parse_numeric_spec(candidate.screen_size)
-    if t_screen and c_screen:
-        if abs(t_screen - c_screen) < 0.5:
-            scores.append(1.0)
-            matched_features.append(f"Màn hình ~{t_screen}\"")
+            matched_features.append(f'Màn hình ~{target_screen}"')
         else:
             scores.append(0.5)
 
-    # 4. Specs Dictionary Overlap
-    t_specs = target.specs or {}
-    c_specs = candidate.specs or {}
-    if t_specs and c_specs:
-        shared_keys = set(t_specs.keys()).intersection(c_specs.keys())
-        if shared_keys:
-            matches = sum(1 for k in shared_keys if str(t_specs[k]).lower() == str(c_specs[k]).lower())
-            total = len(shared_keys)
-            scores.append(matches / total)
-
-    if not scores:
-        return 0.5, matched_features
-
-    return sum(scores) / len(scores), matched_features
+    return (sum(scores) / len(scores) if scores else 0.0), matched_features
 
 
 def calculate_price_proximity(target: Product, candidate: Product) -> float:
@@ -111,7 +131,7 @@ def rerank_similar_candidates(
             intersection = len(target_keywords.intersection(cand_keywords))
             union = len(target_keywords.union(cand_keywords)) or 1
             jaccard = intersection / union
-            rating_score = ((candidate.average_rating or 4.0) / 5.0) * 0.2
+            rating_score = (_rating_for_ranking(candidate) / 5.0) * 0.2
             vector_score = (jaccard * 0.8) + rating_score
 
         brand_boost = 0.15 if cand_brand and cand_brand == target_brand else 0.0
@@ -126,13 +146,13 @@ def rerank_similar_candidates(
             + keyword_overlap
         )
 
-        reason = "Sản phẩm cùng phân khúc và cấu hình tương đồng"
+        reason = "Gợi ý trong cùng nhóm sản phẩm; chưa đủ dữ liệu đối chiếu thông số"
         if matched_features:
             spec_str = ", ".join(matched_features)
             if cand_brand and cand_brand == target_brand:
-                reason = f"Cùng thương hiệu {target_product.brand} & cấu hình ({spec_str})"
+                reason = f"Cùng thương hiệu {target_product.brand}; thông số đối chiếu trong catalog ({spec_str})"
             else:
-                reason = f"Cấu hình tương đồng ({spec_str})"
+                reason = f"Thông số đối chiếu trong catalog ({spec_str})"
         elif cand_brand and cand_brand == target_brand:
             reason = f"Cùng thương hiệu {target_product.brand}"
         elif keyword_overlap > 0:
@@ -140,7 +160,7 @@ def rerank_similar_candidates(
 
         scored_items.append((total_score, candidate, reason))
 
-    scored_items.sort(key=lambda item: -item[0])
+    scored_items.sort(key=lambda item: (-item[0], item[1].product_id))
 
     recommendations = [
         RecommendationItem(
@@ -182,17 +202,20 @@ def rerank_accessory_candidates(
         if target_vector and candidate.embedding:
             sim_score = calculate_cosine_similarity(target_vector, candidate.embedding)
         else:
-            rating_score = ((candidate.average_rating or 4.0) / 5.0) * 0.6
+            rating_score = (_rating_for_ranking(candidate) / 5.0) * 0.6
             discount_boost = 0.2 if (candidate.discount_percent or 0) > 0 else 0.0
             sim_score = rating_score + discount_boost
 
-        rating_score = ((candidate.average_rating or 4.0) / 5.0) * 0.2
+        rating_score = (_rating_for_ranking(candidate) / 5.0) * 0.2
         total_score = sim_score + rating_score
 
-        reason = f"Phụ kiện {candidate.category_name or ''} gợi ý cho {target_product.title}"
+        reason = (
+            f"Gợi ý {candidate.category_name or ''} theo nhóm bổ trợ cho "
+            f"{target_product.title}; chưa xác nhận tương thích"
+        )
         accessory_items.append((total_score, candidate, reason))
 
-    accessory_items.sort(key=lambda item: -item[0])
+    accessory_items.sort(key=lambda item: (-item[0], item[1].product_id))
 
     recommendations = [
         RecommendationItem(
@@ -214,9 +237,19 @@ def rerank_accessory_candidates(
     return RecommendationResponse(
         target_product_id=target_product.product_id,
         target_product_title=target_product.title,
-        strategy="fast_cross_category_complementary_matrix",
+        strategy="declared_category_complementary",
         recommendations=recommendations,
     )
+
+
+def _catalog_rating_reason(product: Product) -> str:
+    """Describe evidence consistent with the BE contract, never the prior."""
+    rating = _observed_catalog_rating(product)
+    if rating is not None:
+        return f"Gợi ý từ danh mục; điểm đánh giá trong catalog: {rating:.1f}/5"
+    if product.average_rating == 0 and product.num_ratings == 0:
+        return "Gợi ý từ danh mục; catalog chưa có điểm đánh giá xác định"
+    return "Gợi ý từ danh mục; dữ liệu đánh giá không nhất quán, chưa dùng làm bằng chứng"
 
 
 def rerank_trending_candidates(
@@ -227,14 +260,15 @@ def rerank_trending_candidates(
     scored_items: list[tuple[float, Product, str]] = []
 
     for product in candidates:
-        rating = product.average_rating or 4.0
+        # Preserve the legacy scoring prior, but never present it as evidence.
+        ranking_rating = _rating_for_ranking(product)
         sold = product.quantity_sold or 0
-        score = (rating * 2.0) + math.log(sold + 1)
+        score = (ranking_rating * 2.0) + math.log(sold + 1)
 
-        reason = f"Sản phẩm nổi bật bán chạy với {rating:.1f}⭐ đánh giá tốt"
+        reason = _catalog_rating_reason(product)
         scored_items.append((score, product, reason))
 
-    scored_items.sort(key=lambda item: -item[0])
+    scored_items.sort(key=lambda item: (-item[0], item[1].product_id))
 
     recommendations = [
         RecommendationItem(
@@ -281,9 +315,10 @@ def rerank_personalized_candidates(
     scored_items: list[tuple[float, Product, str]] = []
 
     for product in candidates:
-        rating = product.average_rating or 4.0
+        # Scoring prior only; user-facing explanations use catalog evidence.
+        ranking_rating = _rating_for_ranking(product)
         sold = product.quantity_sold or 0
-        base_score = (rating * 2.0) + math.log(sold + 1)
+        base_score = (ranking_rating * 2.0) + math.log(sold + 1)
 
         cand_cat = normalize_text(product.category_name or "")
         cand_title = normalize_text(product.title)
@@ -308,7 +343,7 @@ def rerank_personalized_candidates(
             reason = f"✨ Gợi ý cá nhân hóa mới nhất theo hành vi truy cập {product.category_name or 'thiết bị này'}"
         else:
             total_score = base_score
-            reason = f"Sản phẩm nổi bật với {rating:.1f}⭐ đánh giá tốt"
+            reason = _catalog_rating_reason(product)
 
         scored_items.append((total_score, product, reason))
 

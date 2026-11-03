@@ -1,7 +1,7 @@
 # Kyro AI Service
 
 FastAPI shopping consultation, search and recommendation prototype.
-Current status: 2026-11-02. This is not a verified production system or a completed thesis evaluation.
+Current status: 2026-11-03. This is not a verified production system or a completed thesis evaluation.
 
 ## Current chat core
 
@@ -64,7 +64,9 @@ encoding requires a verified revision. Chat ranking is keyword-only.
 
 Evaluation/training and ingestion dry-run are supporting workflows, not proof
 of real-world quality. Legacy FP-Growth still has a synthetic-generation chain;
-do not treat it as a verified-data training pipeline. The old standalone
+its artifacts are no longer used for accessory serving. Category suggestions
+are not verified compatibility or purchase evidence. Do not treat the legacy
+trainer as a verified-data training pipeline. The old standalone
 `scripts/run_consumer.py` needs separate repair; FastAPI starts its active consumer.
 Embedding provenance integration and the Docker model-preload layer are unfinished.
 
@@ -82,6 +84,15 @@ quality, production latency or thesis results. Independent query evaluation,
 multi-turn memory, frontend SSE checks and authenticated identity remain open.
 Catalog prices can be suspicious; active/stock/price are not checkout guarantees.
 Stock-zero handling and generated qualitative claims still need evaluation.
+
+Recommendation correctness checkpoint (2026-11-03): explicit SI capacities,
+full eligible-set ranking, canonical similar categories, conservative accessory
+groups, rating/count consistency, and no positive spec evidence for missing data.
+Remaining limits include the unvalidated 4.0 rating prior, ambiguous comma-formatted
+capacities, snapshot cache freshness, flat-spec-only similar scoring (not SKU
+resolution), and reduced coverage for unsupported categories. Offline regression
+tests are not independent ranking-quality or live integration evidence. Chat
+interpretation/prose/multi-turn fixes are not part of this checkpoint.
 
 Older inherited documents/notebooks are historical, not current implementation claims.
 Local phase reports, generated datasets, secrets and backups are not published here.

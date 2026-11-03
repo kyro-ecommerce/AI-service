@@ -1,171 +1,55 @@
-import logging
 from app.schemas.product import Product
-
-logger = logging.getLogger("ai-service.recommendation.retrieval")
-
-
-CATEGORY_SYNONYMS: dict[str, list[str]] = {
-    "laptop": ["may tinh xach tay", "macbook", "notebook", "laptop gaming", "laptop van phong"],
-    "phone": ["dien thoai", "smartphone", "iphone", "mobile", "dien thoai thong minh"],
-    "dien thoai": ["phone", "smartphone", "iphone", "mobile", "dien thoai thong minh"],
-    "mouse": ["chuot", "chuot khong day", "chuot gaming"],
-    "chuot": ["mouse", "chuot khong day", "chuot gaming"],
-    "headphone": ["tai nghe", "airpods", "headset", "tai nghe bluetooth"],
-    "tai nghe": ["headphone", "airpods", "headset", "tai nghe bluetooth"],
-    "keyboard": ["ban phim", "ban phim co"],
-    "ban phim": ["keyboard", "ban phim co"],
-    "monitor": ["man hinh", "man hinh may tinh"],
-    "man hinh": ["monitor", "man hinh may tinh"],
-}
-
-CATEGORY_KEYWORDS: list[str] = [
-    "laptop",
-    "macbook",
-    "notebook",
-    "may tinh xach tay",
-    "iphone",
-    "dien thoai",
-    "phone",
-    "smartphone",
-    "chuot",
-    "mouse",
-    "tai nghe",
-    "headphone",
-    "airpods",
-    "headset",
-    "ban phim",
-    "keyboard",
-    "man hinh",
-    "monitor",
-]
-
-
-def extract_category_intents(target_product: Product) -> set[str]:
-    from app.services.search_service import normalize_text
-
-    cat_norm = normalize_text(target_product.category_name or "")
-    title_norm = normalize_text(target_product.title or "")
-    combined = f"{cat_norm} {title_norm}"
-
-    intents = set()
-    if cat_norm:
-        intents.add(cat_norm)
-
-    for kw in CATEGORY_KEYWORDS:
-        if kw in combined:
-            intents.add(kw)
-            syns = CATEGORY_SYNONYMS.get(kw, [])
-            for syn in syns:
-                intents.add(syn)
-
-    return intents
+from app.services.consultation_core import canonical_category
 
 
 def retrieve_candidates_for_similar(
     products: list[Product],
     target_product: Product,
-    limit: int = 50,
+    limit: int | None = 50,
 ) -> list[Product]:
-    """Stage 1 Candidate Retrieval for Similar Product Recommendation.
+    """Retrieve active substitutes in the same explicit canonical category.
 
-    Filters active candidate products, prioritizing products in the same category
-    or matching the target product's category intent.
+    Unknown/generic categories, title hints and substring matches are not
+    evidence of a shared product type. No cross-category fallback is used.
+    limit=None keeps all eligible candidates for ranking before top-K.
     """
-    from app.services.search_service import normalize_text
-
-    target_cat_norm = normalize_text(target_product.category_name or "")
-    intents = extract_category_intents(target_product)
-
-    candidates = []
-    seen_ids = set()
-
-    for p in products:
-        if p.product_id == target_product.product_id or not p.is_active:
-            continue
-
-        cand_cat_norm = normalize_text(p.category_name or "")
-        cand_title_norm = normalize_text(p.title or "")
-
-        # Tier 1: Exact category match
-        is_exact_cat = (
-            target_cat_norm
-            and cand_cat_norm
-            and (
-                cand_cat_norm == target_cat_norm
-                or target_cat_norm in cand_cat_norm
-                or cand_cat_norm in target_cat_norm
-            )
-        )
-
-        # Tier 2: Intent match (synonyms or title category keyword match)
-        is_intent_match = any(
-            intent in cand_cat_norm or intent in cand_title_norm for intent in intents
-        )
-
-        if is_exact_cat or is_intent_match:
-            candidates.append(p)
-            seen_ids.add(p.product_id)
-
-    if candidates:
-        return candidates[:limit]
-
-    # Tier 3 Fallback: Return other active products only if no intent match found
-    fallback = [
-        p
-        for p in products
-        if p.product_id != target_product.product_id
-        and p.is_active
-        and p.product_id not in seen_ids
+    target_category = canonical_category(target_product.category_name)
+    if not target_product.is_active or target_category in {None, "accessory"}:
+        return []
+    candidates = [
+        product
+        for product in products
+        if product.product_id != target_product.product_id
+        and product.is_active
+        and canonical_category(product.category_name) == target_category
     ]
-    return fallback[:limit]
+    return candidates[:limit]
 
 
 def retrieve_candidates_for_accessories(
     products: list[Product],
     target_product: Product,
     allowed_categories: list[str],
-    limit: int = 50,
+    limit: int | None = 50,
 ) -> list[Product]:
-    """Stage 1 Candidate Retrieval for Accessory / Complementary Products."""
-    from app.services.search_service import normalize_text
-
-    norm_allowed = [normalize_text(cat) for cat in allowed_categories]
-    target_cat_norm = normalize_text(target_product.category_name or "")
-    target_title_norm = normalize_text(target_product.title or "")
+    """Declared category relations only; never infer from titles or pad results."""
+    allowed = {canonical_category(cat) for cat in allowed_categories} - {None}
+    target_category = canonical_category(target_product.category_name)
 
     candidates = [
         p
         for p in products
         if p.product_id != target_product.product_id
-        and normalize_text(p.title or "") != target_title_norm
-        and normalize_text(p.category_name or "") != target_cat_norm
+        and canonical_category(p.category_name) != target_category
         and p.is_active
-        and any(
-            cat in normalize_text(p.category_name or "") or cat in normalize_text(p.title or "")
-            for cat in norm_allowed
-        )
+        and canonical_category(p.category_name) in allowed
     ]
-
-    if len(candidates) >= limit:
-        return candidates[:limit]
-
-    # Pad with other cross-category products when matched candidates are insufficient
-    matched_ids = {p.product_id for p in candidates}
-    fallback = [
-        p
-        for p in products
-        if p.product_id != target_product.product_id
-        and p.product_id not in matched_ids
-        and normalize_text(p.title or "") != target_title_norm
-        and p.is_active
-        and normalize_text(p.category_name or "") != target_cat_norm
-    ]
-    return (candidates + fallback)[:limit]
+    return candidates[:limit]
 
 
 def retrieve_candidates_for_trending(
     products: list[Product],
-    limit: int = 50,
+    limit: int | None = 50,
 ) -> list[Product]:
-    """Stage 1 Candidate Retrieval for Cold-Start / Popularity Recommendations."""
+    """Filter active products; limit=None retains all for popularity ranking."""
     return [p for p in products if p.is_active][:limit]

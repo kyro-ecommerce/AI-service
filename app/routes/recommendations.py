@@ -83,10 +83,7 @@ def get_complementary_recommendations(
     db: Session = Depends(get_db),
 ) -> RecommendationResponse:
     """Alias for /accessories — compatible with Frontend ai.service.js which calls /complementary."""
-    products, _ = list_active_products_safe(db)
-    response = recommend_accessories(products=products, target_product_id=product_id, limit=limit)
-
-    return response
+    return get_accessory_recommendations(product_id=product_id, limit=limit, db=db)
 
 
 class InteractionRecordRequest(BaseModel):
