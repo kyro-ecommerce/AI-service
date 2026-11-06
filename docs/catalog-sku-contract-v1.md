@@ -145,3 +145,78 @@ one card per product, same-pair discount, cache snapshot changes, and the legacy
 flat path. Preserve existing regression tests. Do not tune weights merely to
 improve examples, train on generated interactions, or interpret test count as
 evidence of recommendation usefulness.
+
+### Evaluation scope and human review draft (2026-11-05)
+
+User direction recorded: configuration suitability takes priority, followed by
+price. For similar, the agreed interpretation is proximity to the target
+configuration, not automatically maximizing RAM/storage. A product page's price
+is a reference, not a user-confirmed budget. In the discussed Dell 8GB/512GB
+example the user preferred Acer 8GB/512GB at about 18.91m VND; this is one exposed
+development example, not a complete/independent pilot label or a tuned weight.
+Current weighted scoring does not guarantee configuration-first ordering. Any
+future ranking-policy change needs explicit comparison cases for configuration
+tradeoffs, missing data, and large price differences; no weight change is made
+by recording this direction.
+
+The proposed v1 objective is proximity to the fixed target representative's
+recorded capacities and price, within an explicit product category. It does not
+claim equivalence of gaming/graphics performance, operating systems, portability
+or application compatibility. The ROG/MacBook example alone is not a reason to
+add a gaming boost. A usage-aware substitute task would need a separate contract
+and supporting technical evidence. No new weights are approved by this draft.
+
+Use a frozen catalog fingerprint and publish the target representative before
+labelling. The seven laptop targets observed in the comparison (4, 5, 6, 7, 14,
+16, 20) are a small pilot, not a representative evaluation set. Review all six
+other laptop products for each target (42 directed product pairs if all seven
+remain eligible). Keep candidate order randomized and hide model scores/ranks.
+The reviewer must see actual SKU identities, prices, stock snapshots, capacity
+sources and uncertainty; do not provide model-generated claims as verified facts.
+
+Maintain separate judgments:
+- Product relevance: does the candidate contain a reasonably close available
+  SKU for this target? The reviewer identifies that SKU independently. This
+  product-level judgment can compare both rank lists without inventing a SKU
+  selection for the old system.
+- Selection correctness: is the new system's selected SKU acceptable, and do
+  displayed price/configuration/discount belong to it? A relevant product does
+  not automatically make an arbitrary selected variant correct.
+- Evidence completeness: does the returned result establish the configuration,
+  or leave it unknown? Do not retrospectively add SKU evidence to old responses.
+
+Suggested pilot relevance labels: 3 = close alternative on stated dimensions,
+2 = useful with a material tradeoff, 1 = weak alternative, 0 = unsuitable on
+known facts, unknown = insufficient evidence. Require a short factual rationale;
+do not turn unknown into a negative label or assign labels from the ranker score.
+Have a teammate/user label independently; if two reviewers disagree, retain the
+disagreement and resolve/document it before metrics. Labels made by the coding
+assistant are not independent human evaluation.
+
+After labels exist, compare product-level graded ranking (e.g. nDCG@5), coverage,
+selected-SKU acceptability and evidence/price violations as separate outputs.
+Report unknown/unjudged cases rather than silently dropping them. Seven targets
+do not establish statistical significance or general recommendation quality.
+This pilot may guide development but must not then be presented as untouched
+holdout evidence; collect separate cases before making a final thesis claim.
+No labels or quality scores have been produced by this draft.
+
+An isolated preview exists in app/evaluation/configuration_first.py; serving
+does not import it. It orders by RAM/storage proximity (the existing symmetric
+min/max ratio, averaged over known target capacity dimensions), then lower
+same-SKU sale price, then the existing hybrid score. Missing candidate capacities add no
+evidence; absent target capacities return an explicit unsupported-preview state.
+Screen stays in the tertiary hybrid signal. It selects one eligible SKU per
+product using the same key and retains the fixed target representative.
+This is strict continuous lexicographic ordering, not calibrated similarity
+bands: even a tiny capacity advantage can dominate a large price disadvantage.
+As agreed on 2026-11-06, equal capacity scores now favor the cheaper SKU, not
+the price closer to the target. The aggregate score is a proxy, not proof that
+different RAM/storage tradeoffs are equivalent hardware. Price proximity remains
+diagnostic (and a tertiary component of hybrid), not a budget filter. The strict
+configuration-over-any-price tradeoff remains open for review. No budget
+cap, thresholds, new weights or serving-policy switch has been introduced.
+
+The blank [human pilot review sheet](similar-pilot-review.md) records a frozen
+catalog fingerprint, eligible SKU evidence and 42 unlabelled directed pairs.
+Candidate order is shuffled and model scores/selections are withheld for round A.
