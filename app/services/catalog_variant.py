@@ -1,5 +1,6 @@
 """Validated mapping/storage of SKU snapshots in existing product specs JSONB."""
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.schemas.catalog_variant import CatalogVariantSnapshot
@@ -117,6 +118,52 @@ class VariantEligibility(ContractModel):
     verified: Literal[False] = False
 
 
+@dataclass(frozen=True)
+class VariantCapacityFacts:
+    ram_gb: int | None
+    storage_gb: int | None
+    ram_source: Literal["technical_specs", "variantName"] | None
+    storage_source: Literal["technical_specs", "variantName"] | None
+    parser_version: str | None
+
+
+def resolve_variant_capacities(
+    product: Product,
+    variant: CatalogVariantWithNameProposal,
+    *,
+    policy: Literal["technical_only", "catalog_name_claims"],
+) -> VariantCapacityFacts:
+    """Shared chat/similar evidence policy; never parse names or verify hardware."""
+    if policy not in {"technical_only", "catalog_name_claims"}:
+        raise ValueError("Unsupported SKU evaluation policy")
+    technical = variant.technical_specs
+    ram = technical.ram_gb if technical else None
+    storage = technical.storage_gb if technical else None
+    ram_source: Literal["technical_specs", "variantName"] | None = (
+        "technical_specs" if ram is not None else None
+    )
+    storage_source: Literal["technical_specs", "variantName"] | None = (
+        "technical_specs" if storage is not None else None
+    )
+    proposal = variant.name_proposal
+    if (
+        policy == "catalog_name_claims"
+        and canonical_category(product.category_name) == "laptop"
+        and proposal is not None
+        and proposal.status == "parsed"
+        and proposal.parser_version == PARSER_VERSION
+    ):
+        if ram is None:
+            ram, ram_source = proposal.ram_gb, "variantName"
+        if storage is None:
+            storage, storage_source = proposal.storage_gb, "variantName"
+    return VariantCapacityFacts(
+        ram, storage, ram_source, storage_source,
+        proposal.parser_version
+        if proposal is not None and "variantName" in (ram_source, storage_source) else None,
+    )
+
+
 def evaluate_product_variants(
     requirements: ConsultationRequirements,
     product: Product,
@@ -136,27 +183,9 @@ def evaluate_product_variants(
         raise ValueError("Unsupported SKU evaluation policy")
     evaluations = []
     for variant in variants_from_product(product):
-        technical = variant.technical_specs
-        ram = technical.ram_gb if technical else None
-        storage = technical.storage_gb if technical else None
-        ram_source: Literal["technical_specs", "variantName"] | None = (
-            "technical_specs" if ram is not None else None
-        )
-        storage_source: Literal["technical_specs", "variantName"] | None = (
-            "technical_specs" if storage is not None else None
-        )
-        proposal = variant.name_proposal
-        if (
-            policy == "catalog_name_claims"
-            and canonical_category(product.category_name) == "laptop"
-            and proposal is not None
-            and proposal.status == "parsed"
-            and proposal.parser_version == PARSER_VERSION
-        ):
-            if ram is None:
-                ram, ram_source = proposal.ram_gb, "variantName"
-            if storage is None:
-                storage, storage_source = proposal.storage_gb, "variantName"
+        facts = resolve_variant_capacities(product, variant, policy=policy)
+        ram, storage = facts.ram_gb, facts.storage_gb
+        ram_source, storage_source = facts.ram_source, facts.storage_source
         scoped = product.model_copy(
             update={
                 "original_price": variant.price_vnd,
@@ -198,11 +227,7 @@ def evaluate_product_variants(
                 storage_gb=storage,
                 ram_source=ram_source,
                 storage_source=storage_source,
-                parser_version=(
-                    proposal.parser_version
-                    if proposal is not None and "variantName" in (ram_source, storage_source)
-                    else None
-                ),
+                parser_version=facts.parser_version,
             )
         )
     return evaluations

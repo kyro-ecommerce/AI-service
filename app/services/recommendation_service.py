@@ -1,4 +1,6 @@
 import logging
+import hashlib
+import json
 
 from sqlalchemy.orm import Session
 from app.schemas.product import Product
@@ -7,15 +9,16 @@ from app.services.recommendation.caching import get_cached_recommendation
 from app.services.recommendation.ranker import (
     rerank_accessory_candidates,
     rerank_personalized_candidates,
-    rerank_similar_candidates,
     rerank_trending_candidates,
 )
 from app.services.recommendation.retrieval import (
     retrieve_candidates_for_accessories,
-    retrieve_candidates_for_similar,
     retrieve_candidates_for_trending,
 )
 from app.services.consultation_core import canonical_category
+from app.services.recommendation.sku_ranker import (
+    SIMILAR_SKU_POLICY_VERSION, rank_similar_snapshot,
+)
 
 logger = logging.getLogger("ai-service.recommendations")
 
@@ -46,19 +49,17 @@ def recommend_similar_products(
     target_product = find_product_by_id(products, target_product_id)
     if target_product is None or not target_product.is_active:
         return None
-    cache_key = f"rec_similar_v6:{target_product_id}:{limit}"
+    # Include all score/evidence inputs, independent of catalog input order.
+    # A fresh hash does not make an already-cached DB snapshot fresh.
+    snapshot = json.dumps(
+        [p.model_dump(mode="json") for p in sorted(products, key=lambda p: p.product_id)],
+        sort_keys=True, ensure_ascii=True, separators=(",", ":"),
+    )
+    fingerprint = hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
+    cache_key = f"rec_similar:{SIMILAR_SKU_POLICY_VERSION}:{target_product_id}:{limit}:{fingerprint}"
 
     def _compute():
-        candidates = retrieve_candidates_for_similar(
-            products=products,
-            target_product=target_product,
-            limit=None,
-        )
-        return rerank_similar_candidates(
-            target_product=target_product,
-            candidates=candidates,
-            limit=limit,
-        )
+        return rank_similar_snapshot(products, target_product, limit)
 
     return get_cached_recommendation(cache_key, _compute)
 

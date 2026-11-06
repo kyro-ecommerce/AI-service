@@ -1,7 +1,7 @@
 # Kyro AI Service
 
 FastAPI shopping consultation, search and recommendation prototype.
-Current status: 2026-11-03. This is not a verified production system or a completed thesis evaluation.
+Current status: 2026-11-06. This is not a verified production system or a completed thesis evaluation.
 
 ## Current chat core
 
@@ -89,10 +89,17 @@ Recommendation correctness checkpoint (2026-11-03): explicit SI capacities,
 full eligible-set ranking, canonical similar categories, conservative accessory
 groups, rating/count consistency, and no positive spec evidence for missing data.
 Remaining limits include the unvalidated 4.0 rating prior, ambiguous comma-formatted
-capacities, snapshot cache freshness, flat-spec-only similar scoring (not SKU
-resolution), and reduced coverage for unsupported categories. Offline regression
+capacities, snapshot cache freshness, and reduced coverage for unsupported categories. Offline regression
 tests are not independent ranking-quality or live integration evidence. Chat
 interpretation/prose/multi-turn fixes are not part of this checkpoint.
+
+Local SKU-aware similar update (2026-11-05): a fixed representative target SKU,
+one selected candidate SKU per product, same-SKU prices/capacities/discounts,
+optional comparison evidence, and snapshot-keyed cache are implemented in the
+refactor source tree. The container has not been updated. Flat comparison remains
+only when both products lack SKU snapshots; mixed/invalid cases are skipped.
+Target selection is not the browser's selected SKU. FE evidence display and
+independent ranking evaluation remain pending; see the SKU contract.
 
 Older inherited documents/notebooks are historical, not current implementation claims.
 Local phase reports, generated datasets, secrets and backups are not published here.

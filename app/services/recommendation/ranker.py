@@ -106,59 +106,64 @@ def calculate_price_proximity(target: Product, candidate: Product) -> float:
     return min_p / max_p
 
 
+def score_similar_candidate(target_product: Product, candidate: Product) -> tuple[float, str]:
+    """Unrounded existing hybrid score; SKU aggregation must not rank rounded values."""
+    target_vector = target_product.embedding
+    target_brand = normalize_text(target_product.brand or "")
+    target_keywords = set(normalize_text(target_product.title or "").split())
+
+    cand_brand = normalize_text(candidate.brand or "")
+    cand_keywords = set(normalize_text(candidate.title or "").split())
+
+    spec_score, matched_features = calculate_spec_similarity(target_product, candidate)
+    price_score = calculate_price_proximity(target_product, candidate)
+
+    if target_vector and candidate.embedding:
+        vector_score = calculate_cosine_similarity(target_vector, candidate.embedding)
+    else:
+        intersection = len(target_keywords.intersection(cand_keywords))
+        union = len(target_keywords.union(cand_keywords)) or 1
+        jaccard = intersection / union
+        rating_score = (_rating_for_ranking(candidate) / 5.0) * 0.2
+        vector_score = (jaccard * 0.8) + rating_score
+
+    brand_boost = 0.15 if cand_brand and cand_brand == target_brand else 0.0
+    keyword_overlap = min(len(target_keywords.intersection(cand_keywords)) * 0.05, 0.15)
+
+    # Multi-Objective Composite Scoring: Vector Sim + Spec Sim + Price Segment + Brand Match
+    total_score = (
+        (vector_score * 0.40)
+        + (spec_score * 0.30)
+        + (price_score * 0.15)
+        + (brand_boost * 0.15)
+        + keyword_overlap
+    )
+
+    reason = "Gợi ý trong cùng nhóm sản phẩm; chưa đủ dữ liệu đối chiếu thông số"
+    if matched_features:
+        spec_str = ", ".join(matched_features)
+        if cand_brand and cand_brand == target_brand:
+            reason = f"Cùng thương hiệu {target_product.brand}; thông số đối chiếu trong catalog ({spec_str})"
+        else:
+            reason = f"Thông số đối chiếu trong catalog ({spec_str})"
+    elif cand_brand and cand_brand == target_brand:
+        reason = f"Cùng thương hiệu {target_product.brand}"
+    elif keyword_overlap > 0:
+        reason = f"Sản phẩm tương tự {target_product.title}"
+
+    return total_score, reason
+
+
 def rerank_similar_candidates(
     target_product: Product,
     candidates: list[Product],
     limit: int = 5,
 ) -> RecommendationResponse:
-    """Stage 2 Multi-Objective Ultra-Fast Re-ranker for Similar Products."""
-    target_vector = target_product.embedding
-    target_brand = normalize_text(target_product.brand or "")
-    target_keywords = set(normalize_text(target_product.title or "").split())
-
-    scored_items: list[tuple[float, Product, str]] = []
-
+    """Rank the supplied comparable product projections with the shared score."""
+    scored_items = []
     for candidate in candidates:
-        cand_brand = normalize_text(candidate.brand or "")
-        cand_keywords = set(normalize_text(candidate.title or "").split())
-
-        spec_score, matched_features = calculate_spec_similarity(target_product, candidate)
-        price_score = calculate_price_proximity(target_product, candidate)
-
-        if target_vector and candidate.embedding:
-            vector_score = calculate_cosine_similarity(target_vector, candidate.embedding)
-        else:
-            intersection = len(target_keywords.intersection(cand_keywords))
-            union = len(target_keywords.union(cand_keywords)) or 1
-            jaccard = intersection / union
-            rating_score = (_rating_for_ranking(candidate) / 5.0) * 0.2
-            vector_score = (jaccard * 0.8) + rating_score
-
-        brand_boost = 0.15 if cand_brand and cand_brand == target_brand else 0.0
-        keyword_overlap = min(len(target_keywords.intersection(cand_keywords)) * 0.05, 0.15)
-
-        # Multi-Objective Composite Scoring: Vector Sim + Spec Sim + Price Segment + Brand Match
-        total_score = (
-            (vector_score * 0.40)
-            + (spec_score * 0.30)
-            + (price_score * 0.15)
-            + (brand_boost * 0.15)
-            + keyword_overlap
-        )
-
-        reason = "Gợi ý trong cùng nhóm sản phẩm; chưa đủ dữ liệu đối chiếu thông số"
-        if matched_features:
-            spec_str = ", ".join(matched_features)
-            if cand_brand and cand_brand == target_brand:
-                reason = f"Cùng thương hiệu {target_product.brand}; thông số đối chiếu trong catalog ({spec_str})"
-            else:
-                reason = f"Thông số đối chiếu trong catalog ({spec_str})"
-        elif cand_brand and cand_brand == target_brand:
-            reason = f"Cùng thương hiệu {target_product.brand}"
-        elif keyword_overlap > 0:
-            reason = f"Sản phẩm tương tự {target_product.title}"
-
-        scored_items.append((total_score, candidate, reason))
+        score, reason = score_similar_candidate(target_product, candidate)
+        scored_items.append((score, candidate, reason))
 
     scored_items.sort(key=lambda item: (-item[0], item[1].product_id))
 
