@@ -1,7 +1,13 @@
-import asyncio
+"""Mocked API/handler contracts, not production or real-service integration.
+
+The shared conftest replaces models, catalog access, auth and DB dependencies.
+These checks do not establish provider availability, broker delivery or FE output.
+"""
+
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import GEMINI_FALLBACK_MODEL, GEMINI_MODEL
@@ -10,17 +16,18 @@ from app.schemas.product_event import ProductEventType
 from app.services.event_consumer import PROCESSED_EVENT_IDS, process_event_payload
 
 client = TestClient(app)
+pytestmark = pytest.mark.mocked_contract
 
 
-class RefactoredProductionSuiteTest(unittest.TestCase):
-    def test_gemini_model_configuration(self) -> None:
-        """Phase 1: Verify primary and fallback Gemini models are configured."""
+class MockedApiContractsTest(unittest.TestCase):
+    def test_gemini_model_names_are_configured_not_provider_availability(self) -> None:
+        """Only check configured strings; no generation request is made."""
         self.assertTrue(GEMINI_MODEL.strip())
         self.assertTrue(GEMINI_FALLBACK_MODEL.strip())
         self.assertNotEqual(GEMINI_MODEL, GEMINI_FALLBACK_MODEL)
 
-    def test_async_chat_api_response_structure_and_source(self) -> None:
-        """Phase 1 & 2: Verify Async Chat API returns HTTP 200 and source metadata indicator."""
+    def test_mocked_chat_response_structure_and_source(self) -> None:
+        """Check JSON shape with a fixture catalog/model, not consultation quality."""
         response = client.post(
             "/api/v1/ai/chat",
             json={"message": "Tư vấn laptop 16GB RAM", "limit": 2},
@@ -32,8 +39,8 @@ class RefactoredProductionSuiteTest(unittest.TestCase):
         self.assertIn("source", data)
         self.assertIn(data["source"], ["database", "fallback_json"])
 
-    def test_search_api_source_indicator(self) -> None:
-        """Phase 2: Verify Search API response includes transparent data source indicator."""
+    def test_mocked_search_source_indicator(self) -> None:
+        """Fixture source labels do not establish real catalog failover behavior."""
         response = client.post(
             "/api/v1/ai/search",
             json={"query": "chuột không dây", "limit": 3},
@@ -46,10 +53,10 @@ class RefactoredProductionSuiteTest(unittest.TestCase):
     @patch("app.services.event_consumer.fetch_product_dto_from_backend", return_value=None)
     @patch("app.services.event_consumer.upsert_product")
     @patch("app.services.event_consumer.SessionLocal")
-    def test_rabbitmq_event_consumer_contract_and_idempotency(
+    def test_handler_contract_and_process_local_duplicate_tracker(
         self, mock_session: MagicMock, mock_upsert: MagicMock, mock_fetch: MagicMock
     ) -> None:
-        """Phase 4: Verify ProductEvent contract validation and duplicate event idempotency."""
+        """Call the handler with mocked persistence; no RabbitMQ delivery occurs."""
         mock_upsert.return_value = "created"
         mock_session.return_value.__enter__.return_value.get.return_value = None
         PROCESSED_EVENT_IDS.clear()
