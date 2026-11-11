@@ -1,6 +1,7 @@
 # AI catalog/SKU contract
 
-Current status: 2026-11-06. Backend fields/APIs and its DB are unchanged.
+Status reviewed: 2026-11-11. Backend fields/APIs and its DB are unchanged.
+See [current status](current-status.md) for local runtime/FE changes and acceptance gates.
 
 ## Identity and storage
 
@@ -58,9 +59,15 @@ See [product contract](PRODUCT_DATA_CONTRACT.md) and
 Slices 1/2 are implemented in the refactor worktree: pure SKU projection, shared
 capacity-source resolution, fixed-target ranking/aggregation, optional response
 evidence and snapshot-keyed similar cache. The route uses these helpers in this
-source tree; the running container has not been updated. Existing heuristic
-weights are retained, not tuned. Independent quality evaluation and UI support
-remain pending. No live catalog has been rewritten by this implementation.
+source tree. The local container was switched to it on 2026-11-07; Docker was
+unavailable at the start of the 2026-11-11 audit. Once the user started Docker,
+Phase 1B rechecked the mount/readiness and public product/trending endpoints;
+subsequent guest VIEW/SSE probes passed. Signed-in browser acceptance remains
+pending; see the status page rather than treating the initial audit as current.
+Existing heuristic weights are retained, not tuned. Independent quality evaluation
+remains pending. A separate local FE change now displays selected SKU evidence;
+that is not proof of browser E2E behavior or preselection on the product page.
+No live catalog has been rewritten by this implementation.
 The existing similar route receives product_id only; it does not know the SKU
 selected in the browser. It must not claim to match that selection.
 
@@ -122,9 +129,11 @@ status, not a fabricated not-found error. Missing/inactive products still give
 Populate each candidate card's existing price fields from its selected SKU,
 not parent minimum prices; recompute the displayed discount from that same pair.
 Do not call it the product's cheapest SKU unless that is actually true.
-Product links still open a product page without preselecting the SKU. The current
-FE ignores extra evidence/reason fields, so AI-only delivery cannot guarantee
-the user sees which configuration was selected. UI support is a separate task.
+Product links still open a product page without preselecting the SKU. Local
+RelatedProducts/ProductCard changes now consume selected_variant and reason;
+they are outside this AI repo and remain uncommitted in the FE workspace.
+Other recommendation cards must not be assumed to have identical evidence
+support. Matching the browser-selected target SKU remains a separate task.
 No BE DTO/DB changes, migrations or snapshot backfills are part of this design.
 
 Version cache keys by policy and catalog snapshot fingerprint; otherwise a valid

@@ -1,7 +1,10 @@
 # Kyro AI Service
 
 FastAPI shopping consultation, search and recommendation prototype.
-Current status: 2026-11-06. This is not a verified production system or a completed thesis evaluation.
+Status reviewed: 2026-11-11. This is not a verified production system or a completed thesis evaluation.
+
+Start with [current status and acceptance plan](docs/current-status.md): source
+locations, verified versus pending work, test boundaries, and review groups.
 
 ## Current chat core
 
@@ -43,10 +46,14 @@ After reviewing and approving the target DB, apply migrations and start the API:
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-Docker Compose web startup also invokes `alembic upgrade head`.
+The repository's default Docker Compose web startup invokes `alembic upgrade head`.
 No generated catalog is seeded on startup. A fresh clone does NOT contain the
 local 15-SKU DB snapshot; supply a catalog through guarded sync/event paths.
 An unavailable DB is not silently replaced by generated JSON.
+The existing D:\Kyro integration workspace instead has a local override that
+starts Uvicorn without migrations/seeding and reuses its existing DB and `.env`.
+See the status page before recreating that container; the default Compose file
+alone is not equivalent to the local override.
 
 - Docs: `http://localhost:8000/docs`
 - Liveness/readiness: `/api/v1/ai/live`, `/api/v1/ai/ready`
@@ -82,6 +89,15 @@ $env:OPENROUTER_API_KEY = ' '
 Default tests use infrastructure/model doubles. They do not establish live LLM
 quality, production latency or thesis results. Independent query evaluation,
 multi-turn memory, frontend SSE checks and authenticated identity remain open.
+Initial classification: `pytest -m mocked_contract` selects four explicitly
+mocked API/handler checks (renamed from the misleading production-suite label).
+The rest of the suite is not yet fully classified. The integration marker is
+declared but currently selects no tests; CI service containers alone do not
+establish end-to-end coverage. Local FE changes now normalize unknown ratings in
+the shared card/audited callers and display selected-SKU evidence in similar
+cards. Those changes are in a separate dirty FE worktree, not this AI repository,
+and their Node/SSR checks are not browser E2E evidence. Other FE surfaces are not
+therefore certified correct; see the status page for remaining integration gaps.
 Catalog prices can be suspicious; active/stock/price are not checkout guarantees.
 Stock-zero handling and generated qualitative claims still need evaluation.
 
@@ -96,10 +112,15 @@ interpretation/prose/multi-turn fixes are not part of this checkpoint.
 Local SKU-aware similar update (2026-11-05): a fixed representative target SKU,
 one selected candidate SKU per product, same-SKU prices/capacities/discounts,
 optional comparison evidence, and snapshot-keyed cache are implemented in the
-refactor source tree. The container has not been updated. Flat comparison remains
+refactor source tree. Local integration was switched to this source on 2026-11-07;
+the initial 2026-11-11 audit could not access Docker. After the user started it,
+Phase 1B rechecked the mount/readiness and gateway endpoints; subsequent guest
+VIEW/SSE probes passed, but signed-in browser acceptance is still pending.
+See the status page for the sequence and limits of those checks. Flat comparison remains
 only when both products lack SKU snapshots; mixed/invalid cases are skipped.
-Target selection is not the browser's selected SKU. FE evidence display and
-independent ranking evaluation remain pending; see the SKU contract.
+Target selection is not the browser's selected SKU. Similar evidence display has
+local FE support; independent ranking-quality evaluation remains pending.
+Configuration-first remains an offline preview, not the API serving policy.
 
 Older inherited documents/notebooks are historical, not current implementation claims.
 Local phase reports, generated datasets, secrets and backups are not published here.
