@@ -87,16 +87,6 @@ def get_accessory_recommendations(
     return response
 
 
-@router.get("/recommendations/complementary/{product_id}", response_model=RecommendationResponse)
-def get_complementary_recommendations(
-    product_id: int,
-    limit: int = Query(default=5, ge=1, le=20),
-    db: Session = Depends(get_db),
-) -> RecommendationResponse:
-    """Alias for /accessories — compatible with Frontend ai.service.js which calls /complementary."""
-    return get_accessory_recommendations(product_id=product_id, limit=limit, db=db)
-
-
 class InteractionRecordRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -139,6 +129,58 @@ class ProductViewRecordRequest(BaseModel):
     occurred_at: AwareDatetime
 
 
+class BehaviourEventRequest(BaseModel):
+    """Browser CLICK / ADD_TO_CART contract; the actor is assigned on the server.
+
+    ``recommendation_id``/``position``/``model_version`` attribute the event to
+    the recommendation response that displayed the product, when there was one.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    event_type: Literal["CLICK", "ADD_TO_CART"]
+    product_id: int = Field(gt=0, le=9223372036854775807, strict=True)
+    event_id: str = Field(min_length=1, max_length=255)
+    session_id: str = Field(min_length=1, max_length=128)
+    occurred_at: AwareDatetime
+    recommendation_id: str | None = Field(default=None, max_length=255)
+    position: int | None = Field(default=None, ge=0, le=1000)
+    model_version: str | None = Field(default=None, max_length=100)
+    surface: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/interactions/event")
+def record_behaviour_event_endpoint(
+    req: BehaviourEventRequest,
+    db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
+    _authorized: None = Depends(require_internal_request),
+):
+    from app.core.taxonomy import product_category
+    from app.repositories.user_interaction_repository import record_user_interaction
+
+    product = db.get(AIProduct, req.product_id)
+    if product is None or not product.is_active:
+        raise HTTPException(status_code=404, detail="Product is not in the active AI catalog")
+    category = product_category(product.category_name, product.title)
+    recorded = record_user_interaction(
+        db=db,
+        user_id=identity.resolve(0),
+        interaction_type=req.event_type,
+        query_text=f"{req.event_type} product {req.product_id}",
+        category_intents=[category] if category else [],
+        product_id=req.product_id,
+        session_id=req.session_id,
+        event_id=req.event_id,
+        occurred_at=req.occurred_at,
+        recommendation_id=req.recommendation_id,
+        position=req.position,
+        model_version=req.model_version,
+        context_data={"source": "browser_event", "surface": req.surface, "transport": "gateway_http"},
+        raise_on_error=True,
+    )
+    return {"status": "recorded" if recorded else "duplicate", "event_id": req.event_id}
+
+
 @router.post("/interactions/view")
 def record_product_view_endpoint(
     req: ProductViewRecordRequest,
@@ -147,7 +189,7 @@ def record_product_view_endpoint(
     _authorized: None = Depends(require_internal_request),
 ):
     from app.repositories.user_interaction_repository import record_user_interaction
-    from app.services.search_service import normalize_text
+    from app.core.taxonomy import product_category
     from app.services.backend_sync import CatalogServiceError, fetch_product_dto_from_backend, map_dto_to_product
 
     product = db.get(AIProduct, req.product_id)
@@ -165,7 +207,7 @@ def record_product_view_endpoint(
         or (product.brand or "").strip().casefold() != (canonical.brand or "").strip().casefold()
     ):
         raise HTTPException(status_code=409, detail="AI/backend product identity mismatch; catalog reconciliation required")
-    category = normalize_text(product.category_name or "")
+    category = product_category(product.category_name, product.title)
     recorded = record_user_interaction(
         db=db,
         user_id=identity.resolve(0),
@@ -189,26 +231,14 @@ def record_interaction_endpoint(
     _authorized: None = Depends(require_internal_request),
 ):
     from app.repositories.user_interaction_repository import record_user_interaction
-    from app.services.search_service import extract_primary_category_intents, normalize_text
+    from app.core.taxonomy import canonical_category, detect_categories
 
     cat_name = (req.category_name or "").strip()
-    intents = set()
-    if cat_name:
-        intents.add(normalize_text(cat_name))
+    intents = detect_categories(f"{cat_name} {req.query_text or ''}")
+    if exact := canonical_category(cat_name):
+        intents.add(exact)
 
-    # Auto-extract fallback intent keywords from query text (e.g., title / category synonyms)
-    extracted_intents = extract_primary_category_intents(f"{cat_name} {req.query_text or ''}")
-    intents.update(extracted_intents)
-
-    if not intents and req.query_text:
-        # Ultimate fallback: filter out filler prefix words like 'view', 'product', 'realtime', 'cart', 'order', 'for'
-        FILLER_WORDS = {"view", "product", "realtime", "cart", "order", "for"}
-        norm_q = normalize_text(req.query_text)
-        meaningful_words = [w for w in norm_q.split() if w not in FILLER_WORDS and len(w) >= 2]
-        if meaningful_words:
-            intents.add(meaningful_words[0])
-
-    intents_list = list(intents)
+    intents_list = sorted(intents)
     recorded = record_user_interaction(
         db=db,
         user_id=req.user_id or 0,

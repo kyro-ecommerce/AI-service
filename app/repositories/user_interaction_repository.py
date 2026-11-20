@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import UserInteraction
@@ -38,6 +38,37 @@ def normalize_interaction_type(interaction_type: str) -> str:
     return normalized
 
 
+ANONYMOUS_SESSION_LINK_DAYS = 7
+
+
+def attach_anonymous_session(
+    db: Session, session_id: str | None, user_id: int, *, now: datetime | None = None
+) -> int:
+    """Assign a browser session's recent anonymous rows to the signed-in user.
+
+    Called when the same session first acts with a trusted identity (after
+    login), so pre-login views count toward that user's history. Only rows with
+    no owner and from the last ``ANONYMOUS_SESSION_LINK_DAYS`` days move; rows
+    already owned by any user are never reassigned. Session ids are random
+    per-tab UUIDs, so claiming another browser's session is not practical.
+    """
+    if not session_id or user_id <= 0:
+        return 0
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=ANONYMOUS_SESSION_LINK_DAYS)
+    result = db.execute(
+        update(UserInteraction)
+        .where(UserInteraction.session_id == session_id)
+        .where(UserInteraction.user_id == 0)
+        .where(UserInteraction.occurred_at >= cutoff)
+        .values(user_id=user_id)
+        .execution_options(synchronize_session=False)
+    )
+    moved = result.rowcount or 0
+    if moved:
+        logger.info("Linked %d anonymous interactions of a session to user %d", moved, user_id)
+    return moved
+
+
 def record_user_interaction(
     db: Session | None,
     user_id: int,
@@ -57,6 +88,7 @@ def record_user_interaction(
     recommendation_id: str | None = None,
     position: int | None = None,
     model_version: str | None = None,
+    occurred_at_source: str | None = None,
 ) -> bool:
     """Record a user search or chat interaction in PostgreSQL DB for personalizing future recommendations."""
     if not db:
@@ -123,6 +155,9 @@ def record_user_interaction(
                 )
                 return False
 
+        if effective_user_id > 0 and normalized_session_id:
+            attach_anonymous_session(db, normalized_session_id, effective_user_id, now=now)
+
         intents_list = list(category_intents) if category_intents else []
         interaction = UserInteraction(
             user_id=effective_user_id,
@@ -137,7 +172,8 @@ def record_user_interaction(
             position=position,
             model_version=model_version,
             occurred_at=event_time,
-            occurred_at_source="event_provided" if occurred_at is not None else "server_recorded",
+            occurred_at_source=occurred_at_source
+            or ("event_provided" if occurred_at is not None else "server_recorded"),
             received_at=now,
             context_data=context_data,
         )

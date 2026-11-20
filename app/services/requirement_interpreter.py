@@ -11,6 +11,7 @@ from pydantic import Field
 
 from app.core import config
 from app.core.privacy import redact_pii
+from app.services import llm_client
 from app.schemas.consultation import (
     ContractModel,
     ConsultationRequirements,
@@ -247,54 +248,12 @@ async def _request_interpretation(query: str, http_client: httpx.AsyncClient | N
         "giữ ngắn gọn. Không tự thêm thông số, điều kiện hay danh tính.\nSchema: "
         + json.dumps(InterpretationPayload.model_json_schema(), ensure_ascii=False)
     )
-    if config.GEMINI_API_KEY.strip():
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{config.GEMINI_MODEL}:generateContent"
-        headers = {"x-goog-api-key": config.GEMINI_API_KEY.strip()}
-        request_payload: dict[str, object] = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [
-                        {"text": prompt + "\nInput JSON: " + json.dumps(query, ensure_ascii=False)}
-                    ],
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0,
-                "maxOutputTokens": config.LLM_MAX_OUTPUT_TOKENS,
-            },
-        }
-        provider = "gemini"
-    elif config.OPENROUTER_API_KEY.strip():
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {"Authorization": f"Bearer {config.OPENROUTER_API_KEY.strip()}"}
-        request_payload = {
-            "model": config.OPENROUTER_MODEL,
-            "messages": [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": json.dumps(query, ensure_ascii=False)},
-            ],
-            "temperature": 0,
-            "max_tokens": config.LLM_MAX_OUTPUT_TOKENS,
-        }
-        provider = "openrouter"
-    else:
-        return None
-
-    async def request(client: httpx.AsyncClient) -> str | None:
-        response = await client.post(
-            url, headers=headers, json=request_payload, timeout=config.LLM_REQUEST_TIMEOUT_SECONDS
-        )
-        response.raise_for_status()
-        data = response.json()
-        if provider == "gemini":
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        return data["choices"][0]["message"]["content"]
-
-    if http_client is not None:
-        return await request(http_client)
-    async with httpx.AsyncClient() as client:
-        return await request(client)
+    return await llm_client.generate(
+        prompt,
+        "Input JSON: " + json.dumps(query, ensure_ascii=False),
+        temperature=0,
+        http_client=http_client,
+    )
 
 
 async def interpret_requirements(

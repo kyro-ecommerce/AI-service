@@ -1,10 +1,10 @@
 import json
 import logging
 import re
-import unicodedata
 from typing import Any
 
 
+from app.core.taxonomy import detect_categories, fold, keywords_for
 from app.schemas.product import Product
 from app.schemas.search import SearchResult
 from app.services.embedding_service import generate_embedding
@@ -32,23 +32,8 @@ STOPWORDS = {
     "voi",
 }
 
-CATEGORY_SYNONYMS = {
-    "tai nghe": ["headphone", "tai nghe", "earphone", "airpods"],
-    "laptop": ["laptop", "may tinh xach tay", "notebook", "macbook"],
-    "dien thoai": ["phone", "dien thoai", "smartphone", "iphone", "samsung"],
-    "chuot": ["mouse", "chuot"],
-    "ban phim": ["keyboard", "ban phim"],
-    "man hinh": ["monitor", "man hinh", "display"],
-}
-
-
 def normalize_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value.lower().strip())
-    without_marks = "".join(
-        char for char in normalized if not unicodedata.combining(char)
-    )
-
-    return without_marks.replace("đ", "d")
+    return fold(value.strip())
 
 
 def tokenize(query: str) -> list[str]:
@@ -68,25 +53,8 @@ def normalize_parts(parts: list[str]) -> str:
 
 
 def extract_primary_category_intents(raw_query: str) -> set[str]:
-    """Extract ALL primary product category intents from user query (e.g. 'chuột và bàn phím' -> {'mouse', 'keyboard'})."""
-    norm_q = normalize_text(raw_query)
-    intents = set()
-    for cat_name, synonyms in CATEGORY_SYNONYMS.items():
-        for syn in synonyms:
-            if syn in norm_q:
-                if "chuot" in syn or "mouse" in syn:
-                    intents.add("mouse")
-                elif "tai nghe" in syn or "headphone" in syn or "airpods" in syn or "earphone" in syn:
-                    intents.add("headphone")
-                elif "laptop" in syn or "may tinh xach tay" in syn or "macbook" in syn or "notebook" in syn:
-                    intents.add("laptop")
-                elif "ban phim" in syn or "keyboard" in syn:
-                    intents.add("keyboard")
-                elif "dien thoai" in syn or "phone" in syn or "iphone" in syn or "smartphone" in syn or "samsung" in syn:
-                    intents.add("phone")
-                elif "man hinh" in syn or "monitor" in syn or "display" in syn:
-                    intents.add("monitor")
-    return intents
+    """Canonical category keys mentioned in free text (soft signal)."""
+    return detect_categories(raw_query)
 
 
 def extract_budget_constraint(raw_query: str) -> float | None:
@@ -144,13 +112,11 @@ def calculate_keyword_score(
         elif normalized_q in norm_cat or normalized_q in norm_tags:
             score += 15.0
 
-    # 3. Category Synonyms boost
-    for cat_key, synonyms in CATEGORY_SYNONYMS.items():
-        if cat_key in normalized_q:
-            for syn in synonyms:
-                if syn in norm_cat or syn in norm_title or syn in norm_tags:
-                    score += 15.0
-                    break
+    # 3. Category keyword boost: the product's fields mention a requested category
+    if primary_intents:
+        product_text = f"{norm_cat} {norm_title} {norm_tags}"
+        if any(keyword in product_text for keyword in keywords_for(primary_intents)):
+            score += 15.0
 
     # 4. Exact Word Token matching (prevents substring mismatch like "on" in "phong")
     weighted_fields = [

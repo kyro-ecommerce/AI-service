@@ -3,7 +3,10 @@
 from datetime import datetime, timezone
 from typing import Any
 
-EVENT_TIMESTAMP_POLICY = "event_provided_with_timezone_only"
+# Producer-supplied aware time, or live broker receipt time for producers that
+# send none (backend order events). Server/legacy times remain excluded.
+EVENT_TIMESTAMP_POLICY = "event_or_broker_time_with_timezone"
+TEMPORAL_TIME_SOURCES = frozenset({"event_provided", "broker_received"})
 
 
 def parse_aware_timestamp(value: Any) -> datetime | None:
@@ -19,5 +22,5 @@ def parse_aware_timestamp(value: Any) -> datetime | None:
 
 
 def temporal_event_time(value: Any, source: str | None) -> datetime | None:
-    """Strict protocol accepts producer-supplied aware event time only."""
-    return parse_aware_timestamp(value) if source == "event_provided" else None
+    """Temporal protocols accept producer or live broker-receipt time only."""
+    return parse_aware_timestamp(value) if source in TEMPORAL_TIME_SOURCES else None

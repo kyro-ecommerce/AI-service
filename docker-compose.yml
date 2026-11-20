@@ -53,7 +53,9 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/ai_service
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      # Backend services publish product/order events on kyro-rabbitmq (host 5672);
+      # the local ai_rabbitmq service never receives them.
+      - RABBITMQ_URL=${AI_RABBITMQ_URL:-amqp://guest:guest@host.docker.internal:5672/}
       - REDIS_URL=redis://redis:6379/0
       - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL_IN_DOCKER:-http://host.docker.internal:8080}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
@@ -79,6 +81,27 @@ services:
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  consumer:
+    build: .
+    container_name: ai_service_consumer
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/ai_service
+      # Backend services publish product/order events on kyro-rabbitmq (host 5672);
+      # the local ai_rabbitmq service never receives them.
+      - RABBITMQ_URL=${AI_RABBITMQ_URL:-amqp://guest:guest@host.docker.internal:5672/}
+      - REDIS_URL=redis://redis:6379/0
+      - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL_IN_DOCKER:-http://host.docker.internal:8080}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+    volumes:
+      - .:/app
+    depends_on:
+      web:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: python scripts/run_consumer.py
 
   adminer:
     image: adminer:latest

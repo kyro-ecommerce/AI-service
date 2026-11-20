@@ -20,6 +20,17 @@ RABBITMQ_EXCHANGE = os.getenv(
     "product.events",
 )
 
+# Run the consumer inside the API process only for single-process local dev.
+# With N uvicorn workers this would start N consumers; deploy it separately.
+RUN_EVENT_CONSUMER_IN_API = os.getenv("RUN_EVENT_CONSUMER_IN_API", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
+# order-service publishes OrderCreatedEvent here (backend RabbitMQConfig).
+ORDER_EXCHANGE = os.getenv("ORDER_EXCHANGE", "order-exchange")
+
 RABBITMQ_QUEUE = os.getenv(
     "RABBITMQ_QUEUE",
     "ai.product.events",
@@ -27,7 +38,6 @@ RABBITMQ_QUEUE = os.getenv(
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")

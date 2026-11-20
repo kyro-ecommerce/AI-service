@@ -3,7 +3,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.privacy import redact_pii
-from app.services.chat_service import generate_gemini_reply
+from app.services.chat_service import generate_llm_reply
 from app.core.config import LLM_MAX_OUTPUT_TOKENS
 
 
@@ -42,9 +42,9 @@ def test_gemini_payload_never_contains_raw_pii() -> None:
     client = MagicMock()
     client.post = AsyncMock(return_value=response)
 
-    with patch("app.services.chat_service.GEMINI_API_KEY", "test-key"):
+    with patch("app.core.config.GEMINI_API_KEY", "test-key"):
         reply = asyncio.run(
-            generate_gemini_reply(
+            generate_llm_reply(
                 user_message="Liên hệ tôi qua user@example.com hoặc 0912345678",
                 products_context="Không có sản phẩm",
                 http_client=client,

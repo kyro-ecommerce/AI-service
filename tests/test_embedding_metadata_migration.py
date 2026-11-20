@@ -39,7 +39,9 @@ def test_revision_extends_existing_head_without_branching(migration):
     assert migration.revision == "20261030_0012"
     assert migration.down_revision == "20261029_0011"
     scripts = ScriptDirectory(str(ROOT / "migrations"))
-    assert scripts.get_heads() == [migration.revision]
+    heads = scripts.get_heads()
+    assert len(heads) == 1  # linear history, no branch
+    assert migration.revision in {rev.revision for rev in scripts.walk_revisions("base", heads[0])}
     assert scripts.get_revision(migration.revision).down_revision == migration.down_revision
 
 

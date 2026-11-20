@@ -79,7 +79,7 @@ class UserInteraction(Base):
     __tablename__ = "user_interactions"
     __table_args__ = (
         CheckConstraint(
-            "occurred_at_source IN ('event_provided', 'server_recorded', 'legacy_unknown')",
+            "occurred_at_source IN ('event_provided', 'broker_received', 'server_recorded', 'legacy_unknown')",
             name="ck_user_interactions_occurred_at_source",
         ),
     )

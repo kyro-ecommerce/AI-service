@@ -12,6 +12,8 @@ New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
 $stdoutPath = Join-Path $logDirectory "local-ai-$stamp.stdout.log"
 $stderrPath = Join-Path $logDirectory "local-ai-$stamp.stderr.log"
+# Single local process: run the event consumer in-process (never with --workers).
+$env:RUN_EVENT_CONSUMER_IN_API = 'true'
 $aiProcess = Start-Process -FilePath $pythonPath -WorkingDirectory $projectPath `
     -ArgumentList @('-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000') `
     -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru

@@ -44,14 +44,12 @@ def offline(monkeypatch):
     loader = MagicMock(side_effect=lambda: (products, "database"))
     ranker = MagicMock(wraps=search_service.search_products)
     gemini = AsyncMock(return_value=None)
-    router = AsyncMock(return_value=None)
     embedding = MagicMock(side_effect=AssertionError("Consultation must not encode"))
     recorder = MagicMock(return_value=True)
     understanding = AsyncMock(return_value=None)
     monkeypatch.setattr(service, "_load_chat_catalog_snapshot", loader)
     monkeypatch.setattr(service, "search_products", ranker)
-    monkeypatch.setattr(service, "generate_gemini_reply", gemini)
-    monkeypatch.setattr(service, "generate_openrouter_reply", router)
+    monkeypatch.setattr(service, "generate_llm_reply", gemini)
     monkeypatch.setattr(search_service, "generate_embedding", embedding)
     monkeypatch.setattr("app.services.embedding_service.generate_embedding", embedding)
     monkeypatch.setattr(interpreter, "_request_interpretation", understanding)
@@ -64,7 +62,6 @@ def offline(monkeypatch):
         loader=loader,
         ranker=ranker,
         gemini=gemini,
-        router=router,
         recorder=recorder,
         understanding=understanding,
     )
@@ -140,7 +137,6 @@ def test_mixed_or_unsupported_qa_does_not_bypass_clarification(offline, query):
     assert "làm rõ" in response.reply
     offline.ranker.assert_not_called()
     offline.gemini.assert_not_called()
-    offline.router.assert_not_called()
 
 
 @pytest.mark.parametrize("query", ["bạn là ai?", "cho mình hỏi bạn là ai", "ban la ai a"])
@@ -173,7 +169,6 @@ def test_real_qa_normal_and_sse_are_consistent_without_model(offline, query):
     assert "chưa có nguồn" in normal.reply or "làm rõ" in normal.reply
     offline.ranker.assert_not_called()
     offline.gemini.assert_not_called()
-    offline.router.assert_not_called()
 
 
 def test_filters_before_ranking_and_shares_canonical_facts_with_llm(offline):
@@ -206,7 +201,6 @@ def test_ambiguous_or_unsupported_request_asks_without_search_or_llm(offline, qu
     assert "làm rõ" in response.reply or "Bạn muốn" in response.reply
     offline.ranker.assert_not_called()
     offline.gemini.assert_not_called()
-    offline.router.assert_not_called()
 
 
 def test_unknown_ram_is_not_inferred_from_title(offline):
@@ -291,7 +285,6 @@ def test_successful_llm_only_changes_prose_not_selected_cards(offline):
     response = chat()
     assert response.reply == offline.gemini.return_value
     assert set(ids(response)) == {1, 7}
-    offline.router.assert_not_called()
 
 
 @pytest.mark.parametrize("query", [QUERY, "Laptop dưới 20", "Laptop trên 100 triệu", "xin chào"])
@@ -626,7 +619,6 @@ def test_failed_understanding_keeps_known_parts_without_selecting_or_prose_llm(o
     assert "ngữ pháp" not in response.reply
     offline.ranker.assert_not_called()
     offline.gemini.assert_not_awaited()
-    offline.router.assert_not_awaited()
 
 
 def test_clear_rule_query_does_not_pay_for_extra_understanding(offline):
@@ -659,7 +651,7 @@ def test_interpretation_and_prose_share_the_original_deadline(offline, monkeypat
     monkeypatch.setattr(service, "interpret_requirements", understand)
     monkeypatch.setattr(service, "_run_llm_with_budget", generate)
     chat(NATURAL_SKU_QUERY)
-    assert len(observed) == 3
+    assert len(observed) == 2  # interpretation + the single prose call
     assert len(set(observed)) == 1
 
 
