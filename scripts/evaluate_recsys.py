@@ -1,7 +1,10 @@
 """Leakage-resistant offline evaluation for recommendation models.
 
-Default mode reads real user-item interactions from PostgreSQL. Synthetic data
-is available only through ``--demo`` and is always labeled non-publishable.
+Default mode reads observed user-item interactions from PostgreSQL; simulator
+rows are excluded unless ``--include-synthetic``. ``--simulate N`` evaluates on
+N in-memory simulated users over the active catalog (nothing is written).
+``--demo`` uses a tiny fixed dataset. Synthetic sources are always labelled
+exploratory and non-publishable.
 """
 
 from __future__ import annotations
@@ -25,6 +28,10 @@ from app.db.session import SessionLocal
 from app.core.event_time import EVENT_TIMESTAMP_POLICY, temporal_event_time
 from app.services.recommendation.user_item import UserItemModel
 from app.evaluation.provenance import classify_provenance
+from app.evaluation.baselines import (
+    interaction_trending_recommender,
+    make_profile_affinity_recommender,
+)
 from app.evaluation.offline import (
     CatalogAvailability,
     EvaluationInteraction,
@@ -57,7 +64,12 @@ def _actor_id(user_id: int, session_id: str | None) -> str | None:
     return None
 
 
-def load_real_evaluation_data() -> tuple[
+def _is_synthetic_row(context: Any) -> bool:
+    source = context.get("source") if isinstance(context, dict) else None
+    return isinstance(source, str) and "synthetic" in source.lower()
+
+
+def load_real_evaluation_data(include_synthetic: bool = False) -> tuple[
     list[EvaluationInteraction],
     set[int],
     dict[int, CatalogAvailability],
@@ -73,6 +85,11 @@ def load_real_evaluation_data() -> tuple[
             .order_by(UserInteraction.occurred_at.asc())
         ).all()
         products = db.scalars(select(AIProduct)).all()
+        excluded_synthetic = 0
+        if not include_synthetic:
+            kept = [row for row in rows if not _is_synthetic_row(row.context_data)]
+            excluded_synthetic = len(rows) - len(kept)
+            rows = kept
         catalog_ids = {product.product_id for product in products}
         catalog_availability = {
             product.product_id: CatalogAvailability(
@@ -111,7 +128,63 @@ def load_real_evaluation_data() -> tuple[
         "usable_rows": len(interactions),
         "skipped_missing_actor": skipped_missing_actor,
         "skipped_timestamp_origin": skipped_timestamp_origin,
+        "excluded_synthetic_rows": excluded_synthetic,
+        "include_synthetic": include_synthetic,
         "timestamp_policy": EVENT_TIMESTAMP_POLICY,
+    }
+
+
+def load_catalog_products() -> dict[int, Any]:
+    """Active catalog metadata (category, brand) for content/profile baselines."""
+    from app.repositories.product_repository import list_active_products
+
+    try:
+        with SessionLocal() as db:
+            return {p.product_id: p for p in list_active_products(db)}
+    except Exception:
+        return {}
+
+
+def build_simulated_data(
+    products: dict[int, Any], *, users: int, days: int = 30, seed: int = 7,
+) -> tuple[list[EvaluationInteraction], set[int], dict[int, CatalogAvailability], dict]:
+    """Simulator sessions over the given catalog, in memory only.
+
+    The simulator encodes persona category preferences, so a category-affinity
+    model is favoured by construction: this validates the pipeline, it is not
+    evidence about real shoppers.
+    """
+    from app.core.taxonomy import product_category
+    from scripts.simulate_interactions import CatalogItem, simulate
+
+    items = [
+        CatalogItem(
+            p.product_id,
+            product_category(p.category_name, p.title),
+            int(p.discounted_price or p.original_price or 0),
+        )
+        for p in products.values()
+    ]
+    if not items:
+        raise ValueError("No active products to simulate over")
+    end = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(days=days)
+    events = simulate(items, users=users, days=days, seed=seed, end=end)
+    interactions = [
+        EvaluationInteraction(f"user:{e.user_id}", e.product_id, e.interaction_type, e.occurred_at)
+        for e in events
+    ]
+    catalog_ids = {item.product_id for item in items}
+    availability = {
+        pid: CatalogAvailability(available_from=end - timedelta(days=days + 1)) for pid in catalog_ids
+    }
+    return interactions, catalog_ids, availability, {
+        "source": "simulated_in_memory",
+        "provenance": {"status": "synthetic_or_mixed", "verified_observational": False},
+        "simulation": {"users": users, "days": days, "seed": seed},
+        "raw_rows": len(interactions),
+        "usable_rows": len(interactions),
+        "skipped_missing_actor": 0,
+        "caveat": "simulated personas prefer categories; affinity models are favoured by construction",
     }
 
 
@@ -210,6 +283,7 @@ def run_evaluation(
     k: int = 5,
     seed: int = 42,
     catalog_availability: dict[int, CatalogAvailability] | None = None,
+    products: dict[int, Any] | None = None,
 ) -> dict[str, Any]:
     evaluable_interactions = [
         interaction
@@ -240,7 +314,11 @@ def run_evaluation(
         "popularity_baseline": popularity_recommender,
         "item_knn": item_knn_recommender,
         "hybrid_item_knn_popularity": hybrid_recommender,
+        # Phase 2.2 serving baselines, evaluated through the same code paths.
+        "interaction_trending_v1": interaction_trending_recommender,
     }
+    if products:
+        registry["profile_affinity_v1"] = make_profile_affinity_recommender(products)
     protocol_results: dict[str, Any] = {}
     for protocol, split, targets in (
         ("next_item_unseen", next_item_split, ["CLICK", "VIEW", "ADD_TO_CART", "PURCHASE"]),
@@ -339,12 +417,23 @@ def evaluate_recommendation_models(
     *,
     demo: bool = False,
     seed: int = 42,
+    include_synthetic: bool = False,
+    simulate_users: int | None = None,
 ) -> dict[str, Any]:
+    products: dict[int, Any] = {}
     if demo:
         interactions, catalog_ids, availability, audit = build_demo_data()
+    elif simulate_users:
+        products = load_catalog_products()
+        interactions, catalog_ids, availability, audit = build_simulated_data(
+            products, users=simulate_users, seed=seed
+        )
     else:
         try:
-            interactions, catalog_ids, availability, audit = load_real_evaluation_data()
+            interactions, catalog_ids, availability, audit = load_real_evaluation_data(
+                include_synthetic
+            )
+            products = load_catalog_products()
         except Exception as exc:
             return {
                 "schema_version": "evaluation-v2",
@@ -364,6 +453,7 @@ def evaluate_recommendation_models(
         k=k,
         seed=seed,
         catalog_availability=availability,
+        products=products,
     )
 
 
@@ -376,12 +466,29 @@ def main() -> None:
         action="store_true",
         help="Use explicitly labeled synthetic smoke-test data",
     )
+    parser.add_argument(
+        "--include-synthetic",
+        action="store_true",
+        help="Also use simulator rows stored in PostgreSQL (report stays exploratory)",
+    )
+    parser.add_argument(
+        "--simulate",
+        type=int,
+        metavar="USERS",
+        help="Evaluate on USERS in-memory simulated users over the active catalog",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.k < 1:
         parser.error("--k must be positive")
 
-    report = evaluate_recommendation_models(k=args.k, demo=args.demo, seed=args.seed)
+    report = evaluate_recommendation_models(
+        k=args.k,
+        demo=args.demo,
+        seed=args.seed,
+        include_synthetic=args.include_synthetic,
+        simulate_users=args.simulate,
+    )
     serialized = json.dumps(report, ensure_ascii=False, indent=2, default=str)
     print(serialized)
     if args.output:
