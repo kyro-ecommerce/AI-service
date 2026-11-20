@@ -274,10 +274,12 @@ class EvaluationMetricsUnitTest(unittest.TestCase):
     def test_demo_compares_all_models_without_exposing_actor_ids(self) -> None:
         report = evaluate_recommendation_models(k=3, demo=True)
         for protocol in report["protocol_results"].values():
+            # Demo data has no catalog metadata, so the profile baseline is not run.
             self.assertEqual(set(protocol["models"]), {
                 "popularity_baseline", "item_knn", "hybrid_item_knn_popularity",
+                "interaction_trending_v1",
             })
-            self.assertEqual(len(protocol["paired_comparisons"]), 2)
+            self.assertEqual(len(protocol["paired_comparisons"]), 3)
             for result in protocol["models"].values():
                 self.assertNotIn("per_actor", result)
 

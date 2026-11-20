@@ -1,4 +1,9 @@
-"""Train the shared user-item model; DB failures never synthesize replacement data."""
+"""Train the shared user-item model; DB failures never synthesize replacement data.
+
+Simulator rows (context_data.source contains "synthetic") are excluded by
+default. ``--include-synthetic`` trains on them too, but only into an explicit
+non-production ``--output`` and with a source label the serving loader rejects.
+"""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +21,15 @@ from app.core.event_time import EVENT_TIMESTAMP_POLICY, temporal_event_time
 FEATURE_STORE_PATH = str(Path(__file__).resolve().parents[1] / "data" / "collaborative_features.json")
 
 
-def load_training_events() -> tuple[list[UserItemEvent], set[int]]:
+SYNTHETIC_SOURCE_LABEL = "postgresql_including_synthetic"
+
+
+def _is_synthetic(context: object) -> bool:
+    source = context.get("source") if isinstance(context, dict) else None
+    return isinstance(source, str) and "synthetic" in source.lower()
+
+
+def load_training_events(include_synthetic: bool = False) -> tuple[list[UserItemEvent], set[int]]:
     from sqlalchemy import select
     from app.db.models import AIProduct, UserInteraction
     from app.db.session import SessionLocal
@@ -26,6 +39,8 @@ def load_training_events() -> tuple[list[UserItemEvent], set[int]]:
         rows = db.scalars(select(UserInteraction).where(UserInteraction.product_id.isnot(None))).all()
         events = []
         for row in rows:
+            if not include_synthetic and _is_synthetic(getattr(row, "context_data", None)):
+                continue
             actor = (
                 f"user:{row.user_id}" if row.user_id > 0
                 else f"session:{row.session_id}" if row.session_id else None
@@ -37,20 +52,29 @@ def load_training_events() -> tuple[list[UserItemEvent], set[int]]:
 
 
 def run_batch_training(
-    output_path: str | None = None, *, demo: bool = False, cutoff: datetime | None = None,
+    output_path: str | None = None,
+    *,
+    demo: bool = False,
+    cutoff: datetime | None = None,
+    include_synthetic: bool = False,
 ) -> dict:
     if demo and output_path is None:
         raise ValueError("Demo training requires an explicit output_path outside the production store")
     if demo and Path(output_path or "").resolve() == Path(FEATURE_STORE_PATH).resolve():
         raise ValueError("Demo training cannot overwrite the production feature store")
+    if include_synthetic and (
+        output_path is None or Path(output_path).resolve() == Path(FEATURE_STORE_PATH).resolve()
+    ):
+        raise ValueError("Training with simulator rows requires a non-production --output")
     cutoff = cutoff or datetime.now(timezone.utc)
     if demo:
         from scripts.evaluate_recsys import build_demo_data
         events, catalog_ids, _, _ = build_demo_data()
         source = "demo_synthetic"
     else:
-        events, catalog_ids = load_training_events()
-        source = "postgresql"
+        events, catalog_ids = load_training_events(include_synthetic)
+        # The serving loader accepts only "postgresql": a synthetic-trained model never serves.
+        source = SYNTHETIC_SOURCE_LABEL if include_synthetic else "postgresql"
     model = UserItemModel().fit(events, cutoff=cutoff, catalog_ids=catalog_ids)
     if not model.profiles:
         raise ValueError("No eligible user-item events; existing feature store preserved")
@@ -76,6 +100,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output")
     parser.add_argument("--demo", action="store_true")
+    parser.add_argument("--include-synthetic", action="store_true")
     args = parser.parse_args()
-    payload = run_batch_training(output_path=args.output, demo=args.demo)
+    payload = run_batch_training(
+        output_path=args.output, demo=args.demo, include_synthetic=args.include_synthetic
+    )
     print(json.dumps(payload["metadata"], indent=2))
