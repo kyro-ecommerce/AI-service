@@ -9,8 +9,11 @@ from app.services.search_service import calculate_cosine_similarity, normalize_t
 
 logger = logging.getLogger("ai-service.recommendation.ranker")
 
-# Historical baseline only, not a measured catalog mean or a review claim.
-_UNRATED_RANKING_PRIOR = 4.0
+# Bayesian shrinkage toward the neutral midpoint of the 1..5 scale. A product
+# with no (or inconsistent) ratings ranks at the prior, not at "4 stars"; a
+# few ratings move it only part of the way toward its observed average.
+RATING_PRIOR = 3.0
+RATING_PRIOR_WEIGHT = 5
 
 
 def _observed_catalog_rating(product: Product) -> float | None:
@@ -22,7 +25,32 @@ def _observed_catalog_rating(product: Product) -> float | None:
 
 def _rating_for_ranking(product: Product) -> float:
     rating = _observed_catalog_rating(product)
-    return rating if rating is not None else _UNRATED_RANKING_PRIOR
+    if rating is None:
+        return RATING_PRIOR
+    n = product.num_ratings
+    return (n * rating + RATING_PRIOR_WEIGHT * RATING_PRIOR) / (n + RATING_PRIOR_WEIGHT)
+
+
+def _catalog_prior_score(product: Product) -> float:
+    """Catalog-only popularity used as a tiebreak/cold-start prior."""
+    return _rating_for_ranking(product) * 2.0 + math.log((product.quantity_sold or 0) + 1)
+
+
+def _item(product: Product, score: float, reason: str) -> RecommendationItem:
+    return RecommendationItem(
+        product_id=product.product_id,
+        title=product.title,
+        category_id=product.category_id,
+        category_name=product.category_name,
+        brand=product.brand,
+        original_price=product.original_price,
+        discounted_price=product.discounted_price,
+        discount_percent=product.discount_percent,
+        average_rating=product.average_rating,
+        image_url=product.image_url,
+        similarity_score=round(score, 4),
+        reason=reason,
+    )
 
 
 def parse_numeric_spec(val: Any) -> float | None:
@@ -386,3 +414,104 @@ def rerank_personalized_candidates(
         recommendations=recommendations,
     )
 
+
+
+# ---------------------------------------------------------------- phase 2.2
+INTERACTION_TRENDING_STRATEGY = "interaction_trending_v1"
+PROFILE_PERSONALIZED_STRATEGY = "profile_affinity_v1"
+PROFILE_WEIGHTS = {"category": 0.5, "brand": 0.2, "popularity": 0.3}
+_PRIOR_EPSILON = 1e-3  # catalog prior only breaks ties between equal behaviour scores
+
+
+def _behaviour_reason(counts) -> str:
+    views = counts.get("VIEW", 0) + counts.get("CLICK", 0)
+    intents = counts.get("ADD_TO_CART", 0) + counts.get("PURCHASE", 0)
+    parts = []
+    if views:
+        parts.append(f"{views} lượt xem")
+    if intents:
+        parts.append(f"{intents} lượt thêm giỏ/mua")
+    return "Được quan tâm trong 14 ngày qua (" + ", ".join(parts) + ")"
+
+
+def rerank_trending_by_interactions(
+    candidates: list[Product], popularity, limit: int = 5
+) -> RecommendationResponse:
+    """Recent decayed interaction popularity; catalog popularity when none exists.
+
+    Products without recent interactions follow, ordered by the catalog prior,
+    so the list is never padded with unknown items and never empty when the
+    catalog is not.
+    """
+    if not any(popularity.score.get(p.product_id) for p in candidates):
+        return rerank_trending_candidates(candidates=candidates, limit=limit)
+    scored = []
+    for product in candidates:
+        behaviour = popularity.score.get(product.product_id, 0.0)
+        score = behaviour + _PRIOR_EPSILON * _catalog_prior_score(product)
+        reason = (
+            _behaviour_reason(popularity.counts.get(product.product_id, {}))
+            if behaviour > 0 else _catalog_rating_reason(product)
+        )
+        scored.append((score, product, reason))
+    scored.sort(key=lambda row: (-row[0], row[1].product_id))
+    return RecommendationResponse(
+        target_product_id=0,
+        target_product_title="Trang chủ / Người dùng mới",
+        strategy=INTERACTION_TRENDING_STRATEGY,
+        recommendations=[_item(p, sc, r) for sc, p, r in scored[:limit]],
+    )
+
+
+def rerank_personalized_by_profile(
+    user_id: int,
+    candidates: list[Product],
+    profile,
+    popularity,
+    limit: int = 5,
+) -> RecommendationResponse:
+    """Category/brand affinity from the user's own history plus recent popularity.
+
+    Already purchased products are excluded. With no usable history the user
+    gets interaction trending, labelled as a cold-start fallback.
+    """
+    from app.core.taxonomy import product_category
+    from app.services.recommendation.signals import normalise_scores
+
+    if profile.empty:
+        res = rerank_trending_by_interactions(candidates, popularity, limit)
+        res.target_product_id = user_id
+        res.target_product_title = f"Cá nhân hóa cho User ID {user_id}"
+        res.strategy = "cold_start_fallback_no_history"
+        return res
+
+    pop = normalise_scores(popularity.score)
+    w = PROFILE_WEIGHTS
+    scored = []
+    for product in candidates:
+        if product.product_id in profile.purchased:
+            continue
+        category = product_category(product.category_name, product.title)
+        brand = (product.brand or "").strip().casefold()
+        cat_aff = profile.categories.get(category, 0.0) if category else 0.0
+        brand_aff = profile.brands.get(brand, 0.0) if brand else 0.0
+        score = (
+            w["category"] * cat_aff
+            + w["brand"] * brand_aff
+            + w["popularity"] * pop.get(product.product_id, 0.0)
+            + _PRIOR_EPSILON * _catalog_prior_score(product)
+        )
+        if cat_aff >= brand_aff and cat_aff > 0:
+            reason = f"Vì bạn quan tâm {product.category_name or 'dòng sản phẩm này'} gần đây"
+        elif brand_aff > 0:
+            reason = f"Thương hiệu {product.brand} bạn hay xem"
+        else:
+            reason = _catalog_rating_reason(product)
+        scored.append((score, product, reason))
+    scored.sort(key=lambda row: (-row[0], row[1].product_id))
+    return RecommendationResponse(
+        target_product_id=user_id,
+        target_product_title=f"Cá nhân hóa cho User ID {user_id}",
+        strategy=PROFILE_PERSONALIZED_STRATEGY,
+        recommendations=[_item(p, sc, r) for sc, p, r in scored[:limit]],
+    )

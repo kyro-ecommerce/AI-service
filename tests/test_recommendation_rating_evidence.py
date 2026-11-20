@@ -6,11 +6,20 @@ import pytest
 
 from app.schemas.product import Product
 from app.services.recommendation.ranker import (
+    RATING_PRIOR,
+    RATING_PRIOR_WEIGHT,
     rerank_accessory_candidates,
     rerank_personalized_candidates,
     rerank_similar_candidates,
     rerank_trending_candidates,
 )
+
+
+UNRATED_SCORE = RATING_PRIOR * 2.0
+
+
+def shrunk(rating, count):
+    return (count * rating + RATING_PRIOR_WEIGHT * RATING_PRIOR) / (count + RATING_PRIOR_WEIGHT)
 
 
 def recommendation(product, path):
@@ -31,8 +40,8 @@ def test_missing_rating_is_not_presented_as_four_stars(path, rating_fields):
     assert "⭐" not in item.reason
     assert "đánh giá tốt" not in item.reason
     assert "chưa có điểm đánh giá xác định" in item.reason
-    # Keep 4.0 as an explicit baseline, not an observed review score.
-    assert item.similarity_score == 8.0
+    # Unrated products rank at the neutral Bayesian prior, not at "4 stars".
+    assert item.similarity_score == UNRATED_SCORE
 
 
 @pytest.mark.parametrize("path", ["trending", "cold_start", "personalized_unmatched"])
@@ -47,7 +56,8 @@ def test_explanation_quotes_catalog_rating_without_quality_or_sales_claim(path, 
     assert "catalog" in item.reason
     assert "đánh giá tốt" not in item.reason
     assert "bán chạy" not in item.reason
-    assert item.similarity_score == round((rating or 4.0) * 2.0, 2)
+    # Few ratings move the score only part of the way from the prior.
+    assert item.similarity_score == round(shrunk(rating, count) * 2.0, 2)
 
 
 @pytest.mark.parametrize("path", ["trending", "cold_start", "personalized_unmatched"])
@@ -59,7 +69,7 @@ def test_inconsistent_rating_is_not_used_as_observed_evidence(path, rating, coun
     assert item.average_rating == rating  # Preserve the source, do not repair it.
     assert "không nhất quán" in item.reason
     assert "/5" not in item.reason
-    assert item.similarity_score == 8.0
+    assert item.similarity_score == UNRATED_SCORE
 
 
 @pytest.mark.parametrize("path", ["similar", "accessory"])
@@ -82,7 +92,7 @@ def test_other_rankers_use_same_rating_policy(path, with_vector):
 
 def test_trending_sales_score_is_unchanged_without_inventing_a_rating():
     item = recommendation(Product(product_id=1, title="Fixture", quantity_sold=100), "trending")
-    assert item.similarity_score == round(8.0 + math.log(101), 2)
+    assert item.similarity_score == round(UNRATED_SCORE + math.log(101), 2)
     assert "4.0" not in item.reason
 
 

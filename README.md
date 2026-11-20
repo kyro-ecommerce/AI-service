@@ -84,6 +84,21 @@ trainer as a verified-data training pipeline. `scripts/simulate_interactions.py`
 `context_data.source = synthetic_simulator` and reported as synthetic).
 Embedding provenance integration and the Docker model-preload layer are unfinished.
 
+## Baseline strategies (behaviour signals)
+
+Computed from `user_interactions` (simulator rows excluded unless
+`SERVING_INCLUDE_SYNTHETIC=true`); each falls back to catalog data when no
+behaviour exists, and the strategy name in the response says which ran.
+
+| Surface | Strategy | Signal |
+| --- | --- | --- |
+| trending | `interaction_trending_v1` | VIEW 1, CLICK 1.5, ADD_TO_CART 3, PURCHASE 5; 14-day window, 3-day half-life. Fallback `popular_best_seller_cold_start` |
+| accessories | `co_purchase_then_category_v1` | products in the same order in at least 2 distinct orders, then declared complementary categories. Fallback `declared_category_complementary` |
+| personalized | `profile_affinity_v1` | user's category (0.5) and brand (0.2) affinity over 90 days (14-day half-life) plus recent popularity (0.3); purchased items hidden. Fallback `cold_start_fallback_no_history` |
+| all | rating prior | Bayesian shrinkage toward 3.0 with weight 5; unrated products rank at the prior |
+
+Weights are fixed defaults, not tuned; compare strategies with the online report below.
+
 ## Recommendation tracking (online metrics)
 
 Every recommendation response (similar, accessories, trending, personalized,

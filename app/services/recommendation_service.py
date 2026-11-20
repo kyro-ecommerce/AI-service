@@ -7,14 +7,17 @@ from app.schemas.product import Product
 from app.schemas.recommendation import RecommendationResponse
 from app.services.recommendation.caching import get_cached_recommendation
 from app.services.recommendation.ranker import (
+    _item,
     rerank_accessory_candidates,
-    rerank_personalized_candidates,
-    rerank_trending_candidates,
+    rerank_personalized_by_profile,
+    rerank_trending_by_interactions,
 )
 from app.services.recommendation.retrieval import (
+    has_available_catalog_sku,
     retrieve_candidates_for_accessories,
     retrieve_candidates_for_trending,
 )
+from app.services.recommendation import signals
 from app.services.consultation_core import canonical_category
 from app.services.recommendation.sku_ranker import (
     SIMILAR_SKU_POLICY_VERSION, rank_similar_snapshot,
@@ -71,10 +74,36 @@ def recommend_similar_products(
     return get_cached_recommendation(cache_key, _compute)
 
 
+CO_PURCHASE_STRATEGY = "co_purchase_then_category_v1"
+
+
+def _co_purchased(
+    products: list[Product], target: Product, pairs, limit: int
+) -> list[tuple[Product, int]]:
+    """Products bought in the same order as ``target`` in enough distinct orders."""
+    counts = pairs.get(target.product_id, {})
+    target_category = canonical_category(target.category_name)
+    by_id = {p.product_id: p for p in products}
+    rows = []
+    for product_id, orders in counts.items():
+        product = by_id.get(product_id)
+        if (
+            product is None
+            or orders < signals.MIN_CO_PURCHASE_ORDERS
+            or not has_available_catalog_sku(product)
+            or canonical_category(product.category_name) == target_category
+        ):
+            continue
+        rows.append((product, orders))
+    rows.sort(key=lambda row: (-row[1], row[0].product_id))
+    return rows[:limit]
+
+
 def recommend_accessories(
     products: list[Product],
     target_product_id: int,
     limit: int = 5,
+    db: Session | None = None,
 ) -> RecommendationResponse | None:
     """Suggest declared complementary categories; do not assert compatibility."""
     # Validate before cache lookup: a removed/inactive target must not return
@@ -83,7 +112,7 @@ def recommend_accessories(
     if target_product is None or not target_product.is_active:
         return None
 
-    cache_key = f"rec_acc_v5:{target_product_id}:{limit}"
+    cache_key = f"rec_acc_v6_copurchase:{target_product_id}:{limit}"
 
     def _compute():
         # Legacy FP-Growth artifacts have no serving provenance contract.
@@ -97,10 +126,27 @@ def recommend_accessories(
             allowed_categories=allowed_categories,
             limit=None,
         )
-        return rerank_accessory_candidates(
+        by_category = rerank_accessory_candidates(
             target_product=target_product,
             candidates=candidates,
             limit=limit,
+        )
+        _, pairs = signals.global_signals(db)
+        co = _co_purchased(products, target_product, pairs, limit)
+        if not co:
+            return by_category
+        # Evidence first: products actually bought together, then category suggestions.
+        items = [
+            _item(product, float(orders), f"Thường được mua cùng sản phẩm này ({orders} đơn hàng)")
+            for product, orders in co
+        ]
+        seen = {item.product_id for item in items}
+        items += [item for item in by_category.items if item.product_id not in seen]
+        return RecommendationResponse(
+            target_product_id=target_product.product_id,
+            target_product_title=target_product.title,
+            strategy=CO_PURCHASE_STRATEGY,
+            recommendations=items[:limit],
         )
 
     return get_cached_recommendation(cache_key, _compute)
@@ -109,13 +155,15 @@ def recommend_accessories(
 def recommend_trending_products(
     products: list[Product],
     limit: int = 5,
+    db: Session | None = None,
 ) -> RecommendationResponse:
-    """Two-Stage Recommendation Pipeline for Cold-Start / Best Sellers with Cache."""
-    cache_key = f"rec_trending_v5_available_sku:{limit}:{_catalog_fingerprint(products)}"
+    """Recent interaction popularity over available SKUs; catalog popularity if none."""
+    cache_key = f"rec_trending_v6_interactions:{limit}:{_catalog_fingerprint(products)}"
 
     def _compute():
         candidates = retrieve_candidates_for_trending(products=products, limit=None)
-        return rerank_trending_candidates(candidates=candidates, limit=limit)
+        popularity, _ = signals.global_signals(db)
+        return rerank_trending_by_interactions(candidates, popularity, limit)
 
     res = get_cached_recommendation(cache_key, _compute)
     if res is None:
@@ -131,7 +179,6 @@ def recommend_personalized_products(
     db: Session | None = None,
 ) -> RecommendationResponse:
     """Two-Stage Adaptive Personalized Recommendation Pipeline based on recent interaction history & Collaborative Filtering."""
-    from app.repositories.user_interaction_repository import get_user_recent_intents
     from app.services.recommendation.collaborative import load_user_item_model
 
     candidates = retrieve_candidates_for_trending(products=products, limit=None)
@@ -169,15 +216,15 @@ def recommend_personalized_products(
             recommendations=items,
         )
 
-    user_intents = get_user_recent_intents(db, user_id)
+    # No trained artifact: affinity to the user's own recent categories/brands.
+    from datetime import datetime, timezone
 
-    # Rank the full eligible catalog before truncating; do not pad with unknowns.
-    return rerank_personalized_candidates(
-        user_id=user_id,
-        candidates=candidates,
-        user_intents=user_intents,
-        cf_scores=None,
-        limit=limit,
+    now = datetime.now(timezone.utc)
+    rows = signals.load_rows(db, now - signals.PROFILE_WINDOW, user_id=user_id)
+    profile = signals.actor_profile(
+        rows, f"user:{user_id}", {p.product_id: p for p in products}, now
     )
+    popularity, _ = signals.global_signals(db)
+    return rerank_personalized_by_profile(user_id, candidates, profile, popularity, limit)
 
 

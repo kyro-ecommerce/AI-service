@@ -46,6 +46,13 @@ LLM_REQUEST_TIMEOUT_SECONDS = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "8"
 LLM_TOTAL_BUDGET_SECONDS = float(os.getenv("LLM_TOTAL_BUDGET_SECONDS", "12"))
 LLM_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "768"))
 
+# Serving rankers ignore simulator rows unless explicitly enabled (demo only).
+SERVING_INCLUDE_SYNTHETIC = os.getenv("SERVING_INCLUDE_SYNTHETIC", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # A real, independently verified HF commit is required before embedding use.
