@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from app.schemas.product import Product
 from app.services.recommendation_service import recommend_personalized_products
+from app.services.catalog_variant import VARIANT_SNAPSHOT_KEY
 
 
 class PersonalizationUnitTest(unittest.TestCase):
@@ -39,6 +40,15 @@ class PersonalizationUnitTest(unittest.TestCase):
                 is_active=True,
             ),
         ]
+
+        # These synthetic ranking fixtures now explicitly carry stock evidence.
+        for product in self.mock_products:
+            product.specs = {VARIANT_SNAPSHOT_KEY: [dict(
+                product_id=product.product_id, variant_id=product.product_id,
+                sku=f"FIXTURE-{product.product_id}", variant_name="Fixture",
+                price_vnd=product.original_price, sale_price_vnd=product.original_price,
+                stock=1, active=True,
+            )]}
 
     @patch("app.repositories.user_interaction_repository.get_user_recent_intents")
     def test_personalized_recommendations_with_history(self, mock_get_intents: MagicMock) -> None:

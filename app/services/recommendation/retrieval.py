@@ -1,5 +1,21 @@
 from app.schemas.product import Product
 from app.services.consultation_core import canonical_category
+from app.services.catalog_variant import variants_from_product
+
+
+def has_available_catalog_sku(product: Product) -> bool:
+    """Require a validated, active, positive-sale SKU with snapshot stock.
+
+    Missing/malformed snapshots are unknown, not evidence of availability.
+    No capacity inference, price rewriting or checkout guarantee is involved.
+    """
+    if not product.is_active:
+        return False
+    try:
+        variants = variants_from_product(product)
+    except (ValueError, TypeError):
+        return False
+    return any(row.active and row.stock > 0 and row.sale_price_vnd > 0 for row in variants)
 
 
 def retrieve_candidates_for_similar(
@@ -51,5 +67,5 @@ def retrieve_candidates_for_trending(
     products: list[Product],
     limit: int | None = 50,
 ) -> list[Product]:
-    """Filter active products; limit=None retains all for popularity ranking."""
-    return [p for p in products if p.is_active][:limit]
+    """Filter snapshot-available products before ranking, not after top-K."""
+    return [p for p in products if has_available_catalog_sku(p)][:limit]

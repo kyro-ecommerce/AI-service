@@ -84,3 +84,35 @@ def select_target_representative(
         key=lambda row: (row.variant.sale_price_vnd, row.variant.variant_id),
         default=None,
     )
+
+
+class InvalidTargetVariant(ValueError):
+    """Requested SKU does not belong to this product's available snapshot."""
+
+
+def capacity_proximity(target: SimilarSkuProjection, candidate: SimilarSkuProjection) -> float | None:
+    """Equal RAM/storage min/max ratios; unknown candidate values contribute zero.
+
+    This measures closeness, not performance. No CPU/GPU, price cap or usage is
+    inferred. Unknown target dimensions are excluded, not invented.
+    """
+    pairs = [(t, c) for t, c in zip(
+        (target.capacities.ram_gb, target.capacities.storage_gb),
+        (candidate.capacities.ram_gb, candidate.capacities.storage_gb),
+    ) if t is not None]
+    if not pairs:
+        return None
+    return sum(min(t, c) / max(t, c) if c is not None else 0.0 for t, c in pairs) / len(pairs)
+
+
+def select_target_variant(
+    result: SimilarSkuProjectionResult, variant_id: int | None = None,
+) -> SimilarSkuProjection | None:
+    if variant_id is None:
+        return select_target_representative(result)
+    if type(variant_id) is not int or variant_id <= 0:
+        raise InvalidTargetVariant("target_variant_id must be a positive integer")
+    for row in result.projections:
+        if row.variant.variant_id == variant_id:
+            return row
+    raise InvalidTargetVariant("Requested target SKU is unavailable or does not belong to this product snapshot")

@@ -172,6 +172,62 @@ với phiên đăng nhập và dịch vụ Docker thật. Nghiệm thu tiếp: g
 gây lỗi tạm thời rồi phục hồi dịch vụ và quan sát card tự xuất hiện; kiểm tra
 đổi tài khoản/sản phẩm trong lúc request đang chờ.
 
+### Cập nhật sau checkpoint — đúng SKU và policy so sánh
+
+Bản sửa tối thiểu tiếp theo: trending và cả hai nhánh personalized dùng chung
+kiểm tra snapshot SKU hợp lệ/active/stock>0/sale>0 trước ranking; thiếu/sai
+snapshot không được coi là khả dụng, không bù kết quả bằng sản phẩm chưa đủ dữ
+kiện. Dùng variants_from_product hiện có, không phân tích cấu hình lại hoặc đổi
+ranking. Trending cache thêm fingerprint catalog, dùng lại helper hash similar.
+Chỉ hai file code AI đổi ở bước này; bổ sung 15 test và cập nhật fixture SKU cho
+7 regression cũ, giữ nguyên assertions ranking. 1.053 tests đạt, Ruff phần liên
+quan đạt. Không sửa FE/BE, không migration/train/restart hay nghiệm thu live cho
+bản sửa này; giá card product-level vẫn chưa bảo đảm là giá SKU khả dụng đã chọn.
+
+UI đã được người dùng duyệt thu gọn: bằng chứng đầy đủ vào disclosure đóng mặc
+định “Chi tiết gợi ý”, vẫn giữ dấu chưa xác minh cạnh cấu hình. Chặn bubbling
+click disclosure để không mở trang sản phẩm ngoài ý muốn. Bộ chọn policy chỉ
+hiện với recommendation_demo=1; URL normal luôn hybrid dù có similar_policy.
+14 test card/selection/UI wiring đạt; không đổi thuật toán hoặc BE trong bước này.
+
+Rà tiếp ngày 12/11: chặn fallback khi URL yêu cầu SKU nhưng catalog FE không có
+biến thể; giữ loader theo scope để retry cũ không dùng closure SKU/tài khoản mới.
+17 test FE liên quan và 66 test AI SKU/policy/evaluation đạt; Ruff đạt. Không chạy
+lại toàn bộ suite/build ở lượt sửa nhỏ này, không sửa BE hoặc tạo folder tạm mới.
+Thay đổi sau checkpoint vẫn chưa commit/push; không nhầm với nhánh remote đã lưu.
+Probe gateway ngày12/11 không kết nối được localhost8080 (0/2 kiểm tra live);
+không coi kết quả HTTP/browser ngày11/11 là trạng thái runtime hôm nay.
+
+Source AI/FE trên nhánh work đã thêm explicit target_variant_id, query variant ở
+trang sản phẩm, card link giữ SKU và kiểm tra SKU sai/hết khả dụng không fallback.
+Cache tách target SKU/policy. Policy hybrid giữ mặc định; capacity_first là lựa
+chọn thử nghiệm gần RAM/storage rồi giá thấp hơn, không phải so hiệu năng.
+Người dùng đã chốt similar gần SKU đang xem, chatbot cấu hình phù hợp ngân sách.
+Xem [contract, rubric và nghiệm thu](similar-acceptance.md).
+
+Recovery đã thu gọn: không refresh sau thành công khi quay lại tab; public hook
+không chờ AuthContext, riêng home tự cung cấp identity/readiness. Request timeout
+15s retry được; deadline tổng 35s dừng khi chuỗi/auth queue treo, không đẩy thêm
+retry vô hạn vào queue. Không sửa auth interceptor dùng chung hoặc BE.
+
+Kiểm tra code: 1.038 AI tests đạt, Ruff đạt; FE 57 tests đạt và build thành công.
+GET qua gateway local thật: target 8→Dell variant12/HP15, target9→Dell13/HP14;
+invalid SKU trả422; capacity_first chạy riêng. AI reload trên bind Windows không
+nạp thay đổi nên đã restart riêng ai_service_app (command Uvicorn, không migration/
+seed); FE dev localhost5173 đã bật lại. Không restart BE/DB, không gọi LLM.
+
+Pilot sourced 4 listing/4 target: thứ tự hybrid/capacity_first đổi1/4; không nhãn
+thật nên quality_evaluation_allowed=false, metrics=null, promotion_allowed=false.
+Fingerprint Product snapshot chuẩn hóa:
+`282a01e739ecdae642b117891e75883cb4790174ace82f497bcc12b2c242a9c6`.
+Khác SHA raw capture là bình thường; không nhầm hai representation.
+
+Browser: người dùng tự mở trang variant9; đã quan sát tài khoản hiển thị và
+card16GB, đổi variant8 hiển thị card8GB. Phát hiện/fix câu reason cũ sai về SKU
+đại diện, thêm regression; không coi UI account là bằng chứng personalized end-to-end.
+Kiểm tra gián đoạn riêng AI đang được nghiệm thu; chưa tự ghi là pass khi mới
+thấy trạng thái reconnect. Các bảng/test-count phía trên giữ mốc checkpoint cũ.
+
 ## 4. Bằng chứng kiểm tra và giới hạn
 
 Kết quả chạy offline ngày 11/11, Python local Windows (không phải CI Linux):
