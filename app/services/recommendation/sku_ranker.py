@@ -7,10 +7,10 @@ from app.schemas.recommendation import (
 from app.services.recommendation.ranker import rerank_similar_candidates, score_similar_candidate
 from app.services.recommendation.retrieval import retrieve_candidates_for_similar
 from app.services.recommendation.sku_projection import (
-    SimilarSkuProjection, project_similar_skus, select_target_representative,
+    SimilarSkuProjection, project_similar_skus, select_target_variant, capacity_proximity,
 )
 
-SIMILAR_SKU_POLICY_VERSION = "similar-sku-v1-catalog-name-claims"
+SIMILAR_SKU_POLICY_VERSION = "similar-sku-v2.1-explicit-target"
 
 
 def _evidence(row: SimilarSkuProjection) -> RecommendationVariantEvidence:
@@ -26,9 +26,24 @@ def _evidence(row: SimilarSkuProjection) -> RecommendationVariantEvidence:
 
 def rank_similar_snapshot(
     products: list[Product], target: Product, limit: int = 5,
+    target_variant_id: int | None = None,
+    ranking_policy: str = "hybrid",
 ) -> RecommendationResponse:
+    if ranking_policy not in {"hybrid", "capacity_first"}:
+        raise ValueError("Unsupported similar ranking policy")
     candidates = retrieve_candidates_for_similar(products, target, limit=None)
     target_result = project_similar_skus(target)
+    representative = select_target_variant(target_result, target_variant_id)
+    if ranking_policy == "capacity_first" and (
+        representative is None or capacity_proximity(representative, representative) is None
+    ):
+        return RecommendationResponse(
+            target_product_id=target.product_id, target_product_title=target.title,
+            strategy="capacity-first-v1-experimental", ranking_policy=ranking_policy,
+            comparison_basis="sku_snapshot", comparison_status="unknown_target_capacities",
+            target_variant=_evidence(representative) if representative else None,
+            target_selection_policy="requested_variant" if target_variant_id is not None else "cheapest_active_in_stock_positive_sale",
+        )
     candidate_results = [(p, project_similar_skus(p)) for p in candidates]
     if target_result.status == "absent_snapshot":
         # Flat comparison only when BOTH products lack a SKU snapshot. Do not
@@ -42,7 +57,6 @@ def rank_similar_snapshot(
             item.comparison_basis = "product_snapshot"
         return response
 
-    representative = select_target_representative(target_result)
     ranked = []
     if representative is not None:
         for _, result in candidate_results:
@@ -52,21 +66,36 @@ def rank_similar_snapshot(
                 (*score_similar_candidate(representative.scoped_product, row.scoped_product), row)
                 for row in result.projections
             ]
-            score, reason, chosen = min(scored, key=lambda item: (
-                -item[0], item[2].variant.sale_price_vnd, item[2].variant.variant_id,
-            ))
+            def priority(item):
+                score, _, row = item
+                if ranking_policy == "capacity_first":
+                    return (-(capacity_proximity(representative, row) or 0), row.variant.sale_price_vnd, -score, row.variant.variant_id)
+                return (-score, row.variant.sale_price_vnd, row.variant.variant_id)
+            score, reason, chosen = min(scored, key=priority)
             ranked.append((score, chosen, reason))
-    ranked.sort(key=lambda item: (-item[0], item[1].scoped_product.product_id))
+    if ranking_policy == "capacity_first":
+        ranked.sort(key=lambda item: (
+            -(capacity_proximity(representative, item[1]) or 0), item[1].variant.sale_price_vnd,
+            -item[0], item[1].scoped_product.product_id, item[1].variant.variant_id,
+        ))
+    else:
+        ranked.sort(key=lambda item: (-item[0], item[1].scoped_product.product_id))
     items = []
     for score, chosen, reason in ranked[:limit]:
         p = chosen.scoped_product
         evidence = _evidence(chosen)
-        # Existing FE ignores structured evidence: retain the SKU identity and
-        # caution in reason too, without promising preselection or checkout.
+        proximity = capacity_proximity(representative, chosen)
+        if ranking_policy == "capacity_first":
+            reason = "Thử nghiệm: ưu tiên độ gần RAM/lưu trữ trong catalog, bằng nhau ưu tiên giá thấp hơn; không đánh giá hiệu năng CPU/GPU"
+        # Keep plain-text consumers honest about the actual target selection.
+        target_note = (
+            f"đối chiếu SKU gốc được chọn {representative.variant.sku} (variant {target_variant_id})"
+            if target_variant_id is not None else "đối chiếu SKU đại diện, không phải SKU đang chọn"
+        )
         reason += (
             f"; SKU {evidence.sku} (variant {evidence.variant_id}); "
             "giá/cấu hình theo snapshot SKU, chưa xác minh độc lập; "
-            "đối chiếu SKU đại diện, không phải SKU đang chọn; cần chọn đúng SKU khi mua"
+            f"{target_note}; cần chọn đúng SKU khi mua"
         )
         items.append(RecommendationItem(
             product_id=p.product_id, title=p.title, category_id=p.category_id,
@@ -75,11 +104,13 @@ def rank_similar_snapshot(
             discount_percent=p.discount_percent, average_rating=p.average_rating,
             image_url=p.image_url, similarity_score=round(score, 2), reason=reason,
             comparison_basis="sku_snapshot", selected_variant=evidence,
+            capacity_proximity=proximity,
         ))
     return RecommendationResponse(
         target_product_id=target.product_id, target_product_title=target.title,
-        strategy=SIMILAR_SKU_POLICY_VERSION, recommendations=items,
+        strategy="capacity-first-v1-experimental" if ranking_policy == "capacity_first" else SIMILAR_SKU_POLICY_VERSION,
+        ranking_policy=ranking_policy, recommendations=items,
         comparison_basis="sku_snapshot", comparison_status=target_result.status,
         target_variant=_evidence(representative) if representative is not None else None,
-        target_selection_policy="cheapest_active_in_stock_positive_sale",
+        target_selection_policy="requested_variant" if target_variant_id is not None else "cheapest_active_in_stock_positive_sale",
     )

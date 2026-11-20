@@ -7,7 +7,7 @@ from app.schemas.product import Product
 from app.services.recommendation.ranker import calculate_price_proximity, score_similar_candidate
 from app.services.recommendation.retrieval import retrieve_candidates_for_similar
 from app.services.recommendation.sku_projection import (
-    SimilarSkuProjection, project_similar_skus, select_target_representative,
+    SimilarSkuProjection, project_similar_skus, select_target_variant, capacity_proximity,
 )
 
 
@@ -37,6 +37,7 @@ class ConfigurationFirstPreview:
 
 def preview_configuration_first(
     products: list[Product], target: Product, limit: int = 5,
+    target_variant_id: int | None = None,
 ) -> ConfigurationFirstPreview:
     """Compare known target RAM/storage, then lower price, then existing hybrid.
 
@@ -54,7 +55,7 @@ def preview_configuration_first(
     if type(limit) is not int or limit < 1:
         raise ValueError("limit must be a positive integer")
     result = project_similar_skus(target)
-    representative = select_target_representative(result)
+    representative = select_target_variant(result, target_variant_id)
     if representative is None:
         return ConfigurationFirstPreview("unusable_target", result.status)
     target_values = (representative.capacities.ram_gb, representative.capacities.storage_gb)
@@ -65,11 +66,7 @@ def preview_configuration_first(
     for candidate in retrieve_candidates_for_similar(products, target, limit=None):
         scored = []
         for row in project_similar_skus(candidate).projections:
-            values = (row.capacities.ram_gb, row.capacities.storage_gb)
-            proximity = sum(
-                min(t, c) / max(t, c) if c is not None else 0.0
-                for t, c in zip(target_values, values) if t is not None
-            ) / dimensions
+            proximity = capacity_proximity(representative, row)
             hybrid, _ = score_similar_candidate(representative.scoped_product, row.scoped_product)
             scored.append(ConfigurationFirstCandidate(
                 row, proximity,

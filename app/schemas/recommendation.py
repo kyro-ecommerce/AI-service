@@ -49,6 +49,7 @@ class RecommendationItem(BaseModel):
     matched_reasons: list[str] | None = None
     comparison_basis: Literal["sku_snapshot", "product_snapshot"] | None = None
     selected_variant: RecommendationVariantEvidence | None = None
+    capacity_proximity: float | None = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="after")
     def require_same_sku_card(self) -> "RecommendationItem":
@@ -85,10 +86,11 @@ class RecommendationResponse(BaseModel):
     comparison_basis: Literal["sku_snapshot", "product_snapshot"] | None = None
     comparison_status: Literal[
         "available", "inactive_product", "absent_snapshot", "empty_snapshot",
-        "invalid_snapshot", "no_available_sku",
+        "invalid_snapshot", "no_available_sku", "unknown_target_capacities",
     ] | None = None
     target_variant: RecommendationVariantEvidence | None = None
-    target_selection_policy: Literal["cheapest_active_in_stock_positive_sale"] | None = None
+    ranking_policy: Literal["hybrid", "capacity_first"] | None = None
+    target_selection_policy: Literal["cheapest_active_in_stock_positive_sale", "requested_variant"] | None = None
 
     def model_post_init(self, __context):
         if self.recommendation_type and self.strategy == "hybrid":

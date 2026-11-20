@@ -16,6 +16,7 @@ from app.services.recommendation_service import (
     recommend_similar_products,
     recommend_trending_products,
 )
+from app.services.recommendation.sku_projection import InvalidTargetVariant
 
 router = APIRouter()
 
@@ -51,10 +52,19 @@ def get_trending_recommendations(
 def get_similar_recommendations(
     product_id: int,
     limit: int = Query(default=5, ge=1, le=20),
+    target_variant_id: int | None = Query(default=None, gt=0),
+    ranking_policy: Literal["hybrid", "capacity_first"] = Query(default="hybrid"),
     db: Session = Depends(get_db),
 ) -> RecommendationResponse:
     products, _ = list_active_products_safe(db)
-    response = recommend_similar_products(products=products, target_product_id=product_id, limit=limit)
+    try:
+        response = recommend_similar_products(
+            products=products, target_product_id=product_id, limit=limit,
+            target_variant_id=target_variant_id,
+            ranking_policy=ranking_policy,
+        )
+    except InvalidTargetVariant as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
     if not response:
         raise HTTPException(status_code=404, detail=f"Product with ID {product_id} not found")

@@ -40,10 +40,21 @@ def find_product_by_id(products: list[Product], product_id: int) -> Product | No
     return None
 
 
+def _catalog_fingerprint(products: list[Product]) -> str:
+    # Snapshot changes invalidate results; this cannot refresh the source DB cache.
+    snapshot = json.dumps(
+        [p.model_dump(mode="json") for p in sorted(products, key=lambda p: p.product_id)],
+        sort_keys=True, ensure_ascii=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
+
+
 def recommend_similar_products(
     products: list[Product],
     target_product_id: int,
     limit: int = 5,
+    target_variant_id: int | None = None,
+    ranking_policy: str = "hybrid",
 ) -> RecommendationResponse | None:
     """Two-Stage Recommendation Pipeline for Similar Products with Cache."""
     target_product = find_product_by_id(products, target_product_id)
@@ -51,15 +62,11 @@ def recommend_similar_products(
         return None
     # Include all score/evidence inputs, independent of catalog input order.
     # A fresh hash does not make an already-cached DB snapshot fresh.
-    snapshot = json.dumps(
-        [p.model_dump(mode="json") for p in sorted(products, key=lambda p: p.product_id)],
-        sort_keys=True, ensure_ascii=True, separators=(",", ":"),
-    )
-    fingerprint = hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
-    cache_key = f"rec_similar:{SIMILAR_SKU_POLICY_VERSION}:{target_product_id}:{limit}:{fingerprint}"
+    fingerprint = _catalog_fingerprint(products)
+    cache_key = f"rec_similar:{SIMILAR_SKU_POLICY_VERSION}:{ranking_policy}:{target_product_id}:{target_variant_id}:{limit}:{fingerprint}"
 
     def _compute():
-        return rank_similar_snapshot(products, target_product, limit)
+        return rank_similar_snapshot(products, target_product, limit, target_variant_id=target_variant_id, ranking_policy=ranking_policy)
 
     return get_cached_recommendation(cache_key, _compute)
 
@@ -104,7 +111,7 @@ def recommend_trending_products(
     limit: int = 5,
 ) -> RecommendationResponse:
     """Two-Stage Recommendation Pipeline for Cold-Start / Best Sellers with Cache."""
-    cache_key = f"rec_trending_v4:{limit}"
+    cache_key = f"rec_trending_v5_available_sku:{limit}:{_catalog_fingerprint(products)}"
 
     def _compute():
         candidates = retrieve_candidates_for_trending(products=products, limit=None)
@@ -127,11 +134,12 @@ def recommend_personalized_products(
     from app.repositories.user_interaction_repository import get_user_recent_intents
     from app.services.recommendation.collaborative import load_user_item_model
 
+    candidates = retrieve_candidates_for_trending(products=products, limit=None)
     model = load_user_item_model()
     if model is not None:
         from app.schemas.recommendation import RecommendationItem
 
-        catalog = {product.product_id: product for product in products if product.is_active}
+        catalog = {product.product_id: product for product in candidates}
         actor = f"user:{user_id}"
         ranked = model.rank(actor, set(catalog), limit, hybrid=True)
         cf_scores = model.collaborative_scores(actor, set(catalog))
@@ -163,10 +171,7 @@ def recommend_personalized_products(
 
     user_intents = get_user_recent_intents(db, user_id)
 
-    # Rank the full active catalog before truncating.
-    candidates = [product for product in products if product.is_active]
-
-
+    # Rank the full eligible catalog before truncating; do not pad with unknowns.
     return rerank_personalized_candidates(
         user_id=user_id,
         candidates=candidates,

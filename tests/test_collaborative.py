@@ -8,6 +8,7 @@ from app.schemas.product import Product
 from app.services.recommendation.collaborative import load_user_item_model
 from app.services.recommendation.user_item import ACTION_WEIGHTS, UserItemEvent, UserItemModel
 from app.services.recommendation_service import recommend_personalized_products
+from app.services.catalog_variant import VARIANT_SNAPSHOT_KEY
 
 
 def test_impressions_and_query_actions_are_not_positive_item_preferences():
@@ -41,7 +42,11 @@ def test_api_uses_full_catalog_and_shared_hybrid_ranking():
         for pid in items
     ]
     products = [
-        Product(product_id=pid, title=f"Product {pid}", category_name="same", is_active=True)
+        Product(product_id=pid, title=f"Product {pid}", category_name="same", is_active=True,
+                specs={VARIANT_SNAPSHOT_KEY: [dict(
+                    product_id=pid, variant_id=pid, sku=f"FIXTURE-{pid}", variant_name="Fixture",
+                    price_vnd=1, sale_price_vnd=1, stock=1, active=True,
+                )]})
         for pid in range(1, 101)
     ]
     products.append(Product(product_id=101, title="Inactive", is_active=False))
