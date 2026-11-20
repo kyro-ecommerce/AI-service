@@ -10,13 +10,15 @@ from aio_pika.abc import AbstractIncomingMessage
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
-from app.core.config import RABBITMQ_EXCHANGE, RABBITMQ_QUEUE, RABBITMQ_URL
+from app.core.config import ORDER_EXCHANGE, RABBITMQ_EXCHANGE, RABBITMQ_QUEUE, RABBITMQ_URL
+from app.core.taxonomy import product_category
 from app.core.product_source import ProductSourceConflictError
-from app.db.models import ProcessedEvent
+from app.db.models import AIProduct, ProcessedEvent
 from app.db.session import SessionLocal
 from app.repositories.product_repository import deactivate_product, upsert_product
 from app.repositories.user_interaction_repository import record_user_interaction
 from app.schemas.product import Product
+from app.schemas.order_event import OrderCreatedEvent
 from app.schemas.product_event import ProductEvent, ProductEventType
 from app.schemas.user_event import UserProductEvent
 from app.services.backend_sync import fetch_product_dto_from_backend, map_dto_to_product
@@ -55,12 +57,62 @@ class BoundedEventTracker:
 
 
 PROCESSED_EVENTS = BoundedEventTracker(max_size=5000)
+ORDER_CREATED_ROUTING_KEY = "order.created"
+CATALOG_ROUTING_KEYS = ("product.created", "product.updated", "product.deleted")
+CLICKSTREAM_ROUTING_KEYS = (
+    "user.product.impression",
+    "user.product.clicked",
+    "user.product.viewed",
+    "user.cart.added",
+    "user.order.completed",
+)
+
+
+def record_order_created(db, order: OrderCreatedEvent, routing_key: str) -> int:
+    """One PURCHASE row per order line, timed by live broker receipt.
+
+    The backend event has no event id or timestamp; ids are derived from the
+    order id so redelivery is idempotent. Emails and prices are not stored.
+    """
+    recorded = 0
+    for item in order.items:
+        product = db.get(AIProduct, item.productId)
+        category = product_category(product.category_name, product.title) if product else None
+        variant = item.variantId or 0
+        recorded += record_user_interaction(
+            db=db,
+            user_id=order.userId,
+            interaction_type="PURCHASE",
+            query_text=f"Order {order.orderId} placed",
+            category_intents=[category] if category else [],
+            commit=False,
+            raise_on_error=True,
+            product_id=item.productId,
+            event_id=f"order-created:{order.orderId}:{item.productId}:{variant}",
+            occurred_at_source="broker_received",
+            context_data={
+                "source": "order_service_event",
+                "routing_key": routing_key,
+                "order_id": order.orderId,
+                "variant_id": item.variantId,
+                "quantity": item.quantity,
+            },
+        )
+    return recorded
 # Backward-compatibility alias for test assertions
 PROCESSED_EVENT_IDS = PROCESSED_EVENTS._set
 
 
 def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str:
     """Apply an event and its idempotency marker in one database transaction."""
+    is_order = routing_key == ORDER_CREATED_ROUTING_KEY
+    order_event: OrderCreatedEvent | None = None
+    if is_order:
+        try:
+            order_event = OrderCreatedEvent.model_validate(payload)
+        except ValidationError as exc:
+            raise InvalidEventPayload(str(exc)) from exc
+        payload = {"event_id": f"order-created:{order_event.orderId}"}
     event_id = payload.get("event_id")
     if not isinstance(event_id, str) or not event_id.strip():
         raise InvalidEventPayload("event_id must be a non-empty string")
@@ -90,7 +142,13 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
                 logger.info("Skipping durable duplicate event ID %s", event_id)
                 return "ignored_duplicate"
 
-            if is_clickstream:
+            if order_event is not None:
+                count = record_order_created(db, order_event, routing_key)
+                logger.info(
+                    "Recorded %d PURCHASE rows for order %s", count, order_event.orderId
+                )
+                action = "order_purchase_recorded"
+            elif is_clickstream:
                 if click_event is None:
                     raise InvalidEventPayload("clickstream event validation failed")
                 user_id = click_event.user_id
@@ -202,12 +260,15 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
         raise
 
     PROCESSED_EVENTS.add(event_id)
-    _invalidate_caches()
+    if not is_clickstream and not is_order:
+        # Clickstream does not change catalog-derived results (trending reads the
+        # catalog snapshot), so a VIEW must not flush every cached response.
+        _invalidate_caches()
     return action
 
 
 def _invalidate_caches() -> None:
-    """Clear recommendation and product caches after a product or clickstream event is processed."""
+    """Clear recommendation and product caches after a catalog (product.*) event."""
     import app.repositories.product_repository as prod_repo
 
     recommendation_response_cache.clear()
@@ -262,8 +323,14 @@ async def start_event_consumer_loop(retry_interval: int = 5) -> None:
 
                 queue = await channel.declare_queue(RABBITMQ_QUEUE, durable=True)
 
-                for routing_key in ["product.created", "product.updated", "product.deleted", "user.product.impression", "user.product.clicked", "user.product.viewed", "user.cart.added", "user.order.completed"]:
+                for routing_key in CATALOG_ROUTING_KEYS + CLICKSTREAM_ROUTING_KEYS:
                     await queue.bind(exchange, routing_key=routing_key)
+                # Same declaration as order-service (durable topic) so either
+                # side may create it first without a PRECONDITION_FAILED error.
+                order_exchange = await channel.declare_exchange(
+                    ORDER_EXCHANGE, type=aio_pika.ExchangeType.TOPIC, durable=True
+                )
+                await queue.bind(order_exchange, routing_key=ORDER_CREATED_ROUTING_KEY)
 
                 logger.info("✅ AI Service RabbitMQ Consumer listening on queue '%s'", RABBITMQ_QUEUE)
                 await queue.consume(on_message_received)

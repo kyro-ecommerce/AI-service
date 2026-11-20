@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
 
+from app.core.config import RUN_EVENT_CONSUMER_IN_API
 from app.routes.chat import router as chat_router
 from app.routes.health import router as health_router
 from app.routes.products import router as products_router
@@ -20,17 +21,19 @@ import httpx
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Launch background RabbitMQ event consumer task & reusable HTTP client
-    consumer_task = asyncio.create_task(start_event_consumer_loop())
+    # The RabbitMQ consumer normally runs as its own process (scripts/run_consumer.py).
+    consumer_task = (
+        asyncio.create_task(start_event_consumer_loop()) if RUN_EVENT_CONSUMER_IN_API else None
+    )
     app.state.http_client = httpx.AsyncClient(timeout=15.0)
     yield
-    # Shutdown: Close HTTP client and cancel background consumer task
     await app.state.http_client.aclose()
-    consumer_task.cancel()
-    try:
-        await consumer_task
-    except asyncio.CancelledError:
-        pass
+    if consumer_task is not None:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(

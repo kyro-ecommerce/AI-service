@@ -22,21 +22,12 @@ from app.schemas.consultation import (
     HardConstraint,
     SoftPreference,
 )
+from app.core.taxonomy import CATEGORY_NAMES, canonical_category, fold
 from app.schemas.product import Product
 
 PARSER_VERSION = "vi-bounded-requirements-v1"
 FILTER_VERSION = "catalog-evidence-filter-v1"
-CATEGORIES = {
-    "laptop": ("laptop", "may tinh xach tay"),
-    "phone": ("phone", "dien thoai"),
-    "tablet": ("tablet", "may tinh bang"),
-    "mouse": ("mouse", "chuot"),
-    "keyboard": ("keyboard", "ban phim"),
-    "monitor": ("monitor", "man hinh"),
-    "headphone": ("headphone", "tai nghe"),
-    "desktop": ("desktop", "desktop-computers", "may tinh de ban"),
-    "accessory": ("accessory", "accessories", "phu kien"),
-}
+CATEGORIES = CATEGORY_NAMES
 BRANDS = (
     "Dell",
     "Asus",
@@ -67,21 +58,6 @@ OPERATORS = {
 OP_PATTERN = "|".join(sorted(OPERATORS, key=len, reverse=True))
 NUMBER = r"\d+(?:[.,]\d+)*"
 MONEY_UNIT = r"(?:trieu|tr|nghin|ngan|k|vnd|dong|d)\b"
-
-
-def fold(value: str) -> str:
-    return "".join(
-        c
-        for c in unicodedata.normalize("NFD", value.lower().replace("đ", "d"))
-        if not unicodedata.combining(c)
-    )
-
-
-def canonical_category(value: str | None) -> str | None:
-    if not value:
-        return None
-    normalized = fold(value.strip())
-    return next((key for key, aliases in CATEGORIES.items() if normalized in aliases), None)
 
 
 def money_vnd(number: str, unit: str) -> int:

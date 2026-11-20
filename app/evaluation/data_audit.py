@@ -8,7 +8,12 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from app.evaluation.offline import EvaluationInteraction, temporal_leave_last_split
 from app.evaluation.provenance import classify_provenance
-from app.core.event_time import EVENT_TIMESTAMP_POLICY, parse_aware_timestamp, temporal_event_time
+from app.core.event_time import (
+    EVENT_TIMESTAMP_POLICY,
+    TEMPORAL_TIME_SOURCES,
+    parse_aware_timestamp,
+    temporal_event_time,
+)
 
 HISTORY_TYPES = {"CLICK", "VIEW", "ADD_TO_CART", "PURCHASE"}
 CONVERSION_TYPES = {"ADD_TO_CART", "PURCHASE"}
@@ -209,7 +214,7 @@ def audit_recommendation_data(
                 protocol_input_rejections["product_outside_catalog"] += 1
             if occurred_at is None:
                 protocol_input_rejections["missing_or_invalid_occurred_at"] += 1
-            if timestamp_source != "event_provided":
+            if timestamp_source not in TEMPORAL_TIME_SOURCES:
                 protocol_input_rejections["non_event_timestamp_source"] += 1
             if action not in HISTORY_TYPES:
                 protocol_input_rejections["non_recommendation_action"] += 1

@@ -30,6 +30,37 @@ product.deleted
 | product.updated | ProductUpdated | Upsert product |
 | product.deleted | ProductDeleted | Deactivate product |
 
+## Order events (order-service)
+
+```txt
+Exchange: order-exchange (topic, durable; khai bao giong order-service)
+Routing key: order.created  ->  cung queue ai.product.events
+```
+
+`OrderCreatedEvent {orderId, userId, userEmail, items[{productId, variantId, quantity, price}]}`
+duoc ghi thanh moi dong mot `PURCHASE`:
+
+- `event_id = order-created:{orderId}:{productId}:{variantId|0}` (idempotent khi redeliver);
+  `ProcessedEvent.event_id = order-created:{orderId}`.
+- Event khong co timestamp: `occurred_at` = thoi diem consumer nhan tu broker,
+  `occurred_at_source = broker_received` (duoc dung trong train/eval, khac `server_recorded`).
+- `userEmail` va gia **khong** duoc luu.
+- Event order khong xoa cache recommendation.
+
+AI phai ket noi **broker cua backend** (`kyro-rabbitmq`, host port 5672). Broker rieng
+`ai_rabbitmq` trong docker-compose cua AI khong nhan duoc event nao tu backend.
+
+## Browser behaviour events (HTTP qua gateway)
+
+| Route | Kieu | Actor |
+| --- | --- | --- |
+| `POST /api/v1/ai/interactions/view` | VIEW | JWT qua gateway, hoac an danh theo `session_id` |
+| `POST /api/v1/ai/interactions/event` | CLICK, ADD_TO_CART (+ `recommendation_id`, `position`, `model_version`, `surface`) | nhu tren |
+
+Browser khong bao gio gui `user_id`. Khi mot `session_id` lan dau co identity
+(sau dang nhap), cac dong an danh <= 7 ngay cua session do duoc gan cho user.
+PURCHASE chi den tu `order.created`, khong nhan tu browser.
+
 ## Event Payload Mau
 
 ```json

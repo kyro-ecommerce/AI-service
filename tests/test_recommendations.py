@@ -48,10 +48,10 @@ class RecommendationServiceTest(unittest.TestCase):
 
         self.assertIsNotNone(res)
         self.assertEqual(res.target_product_id, 1)
-        self.assertGreater(len(res.recommendations), 0)
+        self.assertGreater(len(res.items), 0)
 
         # First recommendation should be laptop2 (Asus TUF Gaming)
-        first_rec = res.recommendations[0]
+        first_rec = res.items[0]
         self.assertEqual(first_rec.product_id, 2)
         self.assertEqual(first_rec.category_name, "laptop")
 
@@ -60,9 +60,9 @@ class RecommendationServiceTest(unittest.TestCase):
 
         self.assertIsNotNone(res)
         self.assertEqual(res.target_product_id, 1)
-        self.assertGreaterEqual(len(res.recommendations), 2)
+        self.assertGreaterEqual(len(res.items), 2)
 
-        accessory_cats = {item.category_name for item in res.recommendations}
+        accessory_cats = {item.category_name for item in res.items}
         self.assertIn("mouse", accessory_cats)
         self.assertIn("headphone", accessory_cats)
 
@@ -98,8 +98,8 @@ class RecommendationServiceTest(unittest.TestCase):
 
         res = recommend_similar_products(prods, target_product_id=10, limit=2)
         self.assertIsNotNone(res)
-        self.assertEqual(res.recommendations[0].product_id, 12)
-        self.assertIn("RAM 32GB", res.recommendations[0].reason)
+        self.assertEqual(res.items[0].product_id, 12)
+        self.assertIn("RAM 32GB", res.items[0].reason)
 
 
 if __name__ == "__main__":

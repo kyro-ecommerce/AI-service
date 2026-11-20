@@ -1,6 +1,8 @@
-"""Redis Distributed & In-Memory Fallback Caching Service for Recommendation System.
+"""Recommendation response cache: Redis with a per-process memory fallback.
 
-Caches recommendation results in Redis distributed cache to achieve < 5ms API response latency across multiple worker instances.
+Keys live under a versioned namespace so a deploy that changes ranking logic or
+the response schema never serves entries written by the previous version.
+Bump ``CACHE_SCHEMA_VERSION`` whenever either changes.
 """
 
 import json
@@ -14,6 +16,8 @@ from app.schemas.recommendation import RecommendationResponse
 
 logger = logging.getLogger("ai-service.recommendation.cache")
 
+CACHE_SCHEMA_VERSION = "v3"
+
 
 class RecommendationCache:
     """Thread-safe Redis Distributed Cache with Local In-Memory Fallback."""
@@ -22,7 +26,7 @@ class RecommendationCache:
         self,
         ttl_seconds: int = 300,
         max_size: int = 500,
-        key_prefix: str = "ai:rec:",
+        key_prefix: str = f"ai:rec:{CACHE_SCHEMA_VERSION}:",
     ) -> None:
         self.ttl_seconds = ttl_seconds
         self.max_size = max_size

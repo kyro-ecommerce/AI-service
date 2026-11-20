@@ -83,7 +83,7 @@ class CachingUnitTest(unittest.TestCase):
 
         self.assertIsNotNone(res1)
         self.assertIsNotNone(res2)
-        self.assertEqual(res1.recommendations[0].product_id, res2.recommendations[0].product_id)
+        self.assertEqual(res1.items[0].product_id, res2.items[0].product_id)
         self.assertLessEqual(duration_cached, duration_cold + 0.05)
 
 

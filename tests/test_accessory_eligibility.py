@@ -96,14 +96,15 @@ def test_missing_target_is_validated_before_cache_lookup(monkeypatch):
     cache.assert_not_called()
 
 
-@pytest.mark.parametrize("endpoint", ["accessories", "complementary"])
-def test_missing_target_is_404_for_both_routes(endpoint):
-    response = TestClient(app).get(f"/api/v1/ai/recommendations/{endpoint}/999")
-    assert response.status_code == 404
+def test_missing_target_is_404_and_retired_alias_is_gone():
+    client = TestClient(app)
+    assert client.get("/api/v1/ai/recommendations/accessories/999").status_code == 404
+    # /complementary was retired; the frontend and gateway use /accessories.
+    assert client.get("/api/v1/ai/recommendations/complementary/1").status_code == 404
 
 
-@pytest.mark.parametrize("endpoint", ["accessories", "complementary"])
-def test_known_target_without_matches_returns_empty_contract(endpoint, monkeypatch):
+def test_known_target_without_matches_returns_empty_contract(monkeypatch):
+    endpoint = "accessories"
     monkeypatch.setattr(
         "app.routes.recommendations.list_active_products_safe",
         lambda db: ([product(1, "laptop"), product(2, "phone")], "database"),

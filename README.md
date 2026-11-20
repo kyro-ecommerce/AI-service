@@ -58,6 +58,13 @@ alone is not equivalent to the local override.
 - Docs: `http://localhost:8000/docs`
 - Liveness/readiness: `/api/v1/ai/live`, `/api/v1/ai/ready`
 - Chat/SSE: `POST /api/v1/ai/chat`, `POST /api/v1/ai/chat/stream`
+- Browser events (via gateway): `POST /api/v1/ai/interactions/view`, `POST /api/v1/ai/interactions/event` (CLICK, ADD_TO_CART)
+
+The RabbitMQ consumer is a separate process: `python scripts/run_consumer.py`
+(the `consumer` service in docker-compose). It must use the backend broker
+(`kyro-rabbitmq`), which carries `product.*` and `order.created`. Set
+`RUN_EVENT_CONSUMER_IN_API=true` only for a single-process local API; never
+with multiple uvicorn workers. PURCHASE rows come from `order.created`.
 
 Mutation/user-specific routes require trusted backend credentials. Do not expose
 `INTERNAL_API_TOKEN` to browsers, trust browser user IDs or disable auth to
@@ -70,11 +77,11 @@ offline evaluation share the user-item model. Search/embedding still has callers
 encoding requires a verified revision. Chat ranking is keyword-only.
 
 Evaluation/training and ingestion dry-run are supporting workflows, not proof
-of real-world quality. Legacy FP-Growth still has a synthetic-generation chain;
-its artifacts are no longer used for accessory serving. Category suggestions
+of real-world quality. The legacy FP-Growth chain has been removed. Category suggestions
 are not verified compatibility or purchase evidence. Do not treat the legacy
-trainer as a verified-data training pipeline. The old standalone
-`scripts/run_consumer.py` needs separate repair; FastAPI starts its active consumer.
+trainer as a verified-data training pipeline. `scripts/simulate_interactions.py` generates labelled synthetic sessions
+(dry-run unless `--apply`; `--purge` removes them; rows are tagged
+`context_data.source = synthetic_simulator` and reported as synthetic).
 Embedding provenance integration and the Docker model-preload layer are unfinished.
 
 ## Verification and remaining limits

@@ -108,15 +108,15 @@ class ChatAPITest(unittest.TestCase):
         # Should return 422 Unprocessable Entity due to Pydantic validation (ge=1)
         self.assertEqual(response.status_code, 422)
 
-    def test_chat_api_offtopic_math_question(self) -> None:
+    def test_chat_api_offtopic_question_recommends_nothing(self) -> None:
         response = client.post(
             "/api/v1/ai/chat",
             json={"message": "1+1 bằng bao nhiêu?", "limit": 2},
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIn("reply", data)
-        self.assertIn("2", data["reply"])
+        self.assertTrue(data["reply"])
+        self.assertEqual(data["recommended_products"], [])
 
     def test_chat_stream_api_success(self) -> None:
         response = client.post(

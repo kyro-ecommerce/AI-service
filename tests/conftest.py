@@ -95,13 +95,7 @@ async def _fake_gemini(user_message: str = "", *args, **kwargs):
     msg = (user_message or "").lower()
     if any(keyword in msg for keyword in ["bao hanh", "bảo hành"]):
         return "Kyro Store cam ket bao hanh chinh hang 12-24 thang."
-    if "1+1" in msg:
-        return "Ket qua: 2"
-    return "Mock AI: Kyro Store co nhieu san pham. Ket qua: 2"
-
-
-async def _fake_openrouter(*args, **kwargs):
-    return None
+    return "Mock AI: Kyro Store co nhieu san pham."
 
 
 def _fake_load_chat_catalog_snapshot():
@@ -135,8 +129,7 @@ def mock_external_dependencies():
                 new=_patched_list_active_products_safe,
             ),
             patch("app.services.chat_service.search_products", new=_patched_search_products),
-            patch("app.services.chat_service.generate_gemini_reply", new=_fake_gemini),
-            patch("app.services.chat_service.generate_openrouter_reply", new=_fake_openrouter),
+            patch("app.services.chat_service.generate_llm_reply", new=_fake_gemini),
             patch(
                 "app.services.chat_service._load_chat_catalog_snapshot",
                 new=_fake_load_chat_catalog_snapshot,

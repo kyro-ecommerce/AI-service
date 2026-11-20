@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config import GEMINI_FALLBACK_MODEL, GEMINI_MODEL
+from app.core.config import GEMINI_MODEL
 from app.main import app
 from app.schemas.product_event import ProductEventType
 from app.services.event_consumer import PROCESSED_EVENT_IDS, process_event_payload
@@ -21,10 +21,8 @@ pytestmark = pytest.mark.mocked_contract
 
 class MockedApiContractsTest(unittest.TestCase):
     def test_gemini_model_names_are_configured_not_provider_availability(self) -> None:
-        """Only check configured strings; no generation request is made."""
+        """Exactly one Gemini model is configured; there is no model cascade."""
         self.assertTrue(GEMINI_MODEL.strip())
-        self.assertTrue(GEMINI_FALLBACK_MODEL.strip())
-        self.assertNotEqual(GEMINI_MODEL, GEMINI_FALLBACK_MODEL)
 
     def test_mocked_chat_response_structure_and_source(self) -> None:
         """Check JSON shape with a fixture catalog/model, not consultation quality."""
