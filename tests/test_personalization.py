@@ -50,28 +50,25 @@ class PersonalizationUnitTest(unittest.TestCase):
                 stock=1, active=True,
             )]}
 
-    @patch("app.repositories.user_interaction_repository.get_user_recent_intents")
-    def test_personalized_recommendations_with_history(self, mock_get_intents: MagicMock) -> None:
-        """Verify that products matching user's recent intent ('laptop') receive personalized score boost."""
-        mock_get_intents.return_value = {"laptop"}
+    def test_personalized_recommendations_with_history(self) -> None:
+        """A user who browsed laptops gets the laptop first, via category affinity."""
+        from datetime import datetime, timezone
+        from app.services.recommendation.signals import InteractionRow
 
-        response = recommend_personalized_products(
-            products=self.mock_products,
-            user_id=123,
-            limit=3,
-            db=MagicMock(),
-        )
+        now = datetime.now(timezone.utc)
+        rows = [InteractionRow("user:123", 1, "VIEW", now), InteractionRow("user:123", 1, "CLICK", now)]
+        with patch("app.services.recommendation.signals.load_rows", return_value=rows):
+            response = recommend_personalized_products(
+                products=self.mock_products, user_id=123, limit=3, db=MagicMock(),
+            )
 
-        self.assertEqual(response.strategy, "personalized_interaction_profile_boost")
-        self.assertTrue(len(response.recommendations) > 0)
-        # Top recommendation should be Laptop Dell XPS 15 due to 1.35x personalized score boost
+        self.assertEqual(response.strategy, "profile_affinity_v1")
         self.assertEqual(response.recommendations[0].product_id, 1)
-        self.assertIn("Gợi ý cá nhân hóa", response.recommendations[0].reason)
+        self.assertIn("Vì bạn quan tâm", response.recommendations[0].reason)
 
-    @patch("app.repositories.user_interaction_repository.get_user_recent_intents")
-    def test_personalized_recommendations_fallback_no_history(self, mock_get_intents: MagicMock) -> None:
+    @patch("app.services.recommendation.signals.load_rows", return_value=[])
+    def test_personalized_recommendations_fallback_no_history(self, _rows: MagicMock) -> None:
         """Verify that users with zero history fallback gracefully to cold-start trending strategy."""
-        mock_get_intents.return_value = set()
 
         response = recommend_personalized_products(
             products=self.mock_products,

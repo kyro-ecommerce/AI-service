@@ -151,3 +151,16 @@ def mock_external_dependencies():
         app.dependency_overrides.pop(get_request_identity, None)
         app.dependency_overrides.pop(require_internal_request, None)
         app.dependency_overrides.pop(enforce_chat_rate_limit, None)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_recommendation_signals():
+    """Behaviour signals and recommendation responses are cached; isolate every test."""
+    from app.services.recommendation import signals
+    from app.services.recommendation.caching import recommendation_response_cache
+
+    signals.clear_signal_cache()
+    recommendation_response_cache.clear()
+    yield
+    signals.clear_signal_cache()
+    recommendation_response_cache.clear()

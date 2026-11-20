@@ -72,7 +72,7 @@ def get_trending_recommendations(
 ) -> RecommendationResponse:
     """Cold-Start Recommendations for New Users: Best Sellers & Top Rated products."""
     products, _ = list_active_products_safe(db)
-    response = recommend_trending_products(products=products, limit=limit)
+    response = recommend_trending_products(products=products, limit=limit, db=db)
     return _served(response, "trending", identity, session_id)
 
 
@@ -111,7 +111,7 @@ def get_accessory_recommendations(
     identity: RequestIdentity = Depends(get_request_identity),
 ) -> RecommendationResponse:
     products, _ = list_active_products_safe(db)
-    response = recommend_accessories(products=products, target_product_id=product_id, limit=limit)
+    response = recommend_accessories(products=products, target_product_id=product_id, limit=limit, db=db)
 
     if not response:
         raise HTTPException(status_code=404, detail=f"Product with ID {product_id} not found")
