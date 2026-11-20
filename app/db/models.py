@@ -152,3 +152,21 @@ class AIProductLegacyArchive(Base):
     snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
     archived_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+
+
+class RecommendationServed(Base):
+    """One recommendation list served to an actor (exposure log for attribution)."""
+
+    __tablename__ = "recommendation_served"
+
+    recommendation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    surface: Mapped[str] = mapped_column(Text, nullable=False)
+    strategy: Mapped[str] = mapped_column(Text, nullable=False)
+    model_version: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_product_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    product_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    served_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

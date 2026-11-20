@@ -291,11 +291,20 @@ def test_successful_llm_only_changes_prose_not_selected_cards(offline):
 def test_normal_and_streaming_share_decision_and_response_contract(offline, query):
     normal = chat(query)
     frames = events(query)
-    assert frames[0] == {
+    metadata = dict(frames[0])
+    stream_id = metadata.pop("recommendation_id")
+    assert metadata.pop("model_version") == normal.model_version
+    assert metadata == {
         "type": "metadata",
         "source": normal.source,
         "recommended_products": [p.model_dump() for p in normal.recommended_products],
     }
+    # Same decision, but every served response is a separate exposure.
+    if normal.recommended_products:
+        assert stream_id.startswith("rec-") and normal.recommendation_id.startswith("rec-")
+        assert stream_id != normal.recommendation_id
+    else:
+        assert stream_id is None and normal.recommendation_id is None
     assert frames[-1] == {"type": "done"}
     assert "".join(f["content"] for f in frames if f["type"] == "chunk") == normal.reply
 
@@ -316,7 +325,9 @@ def test_real_endpoints_keep_json_and_sse_shapes_without_starting_lifespan(offli
         normal = client.post("/api/v1/ai/chat", json=payload)
         streaming = client.post("/api/v1/ai/chat/stream", json=payload)
         assert normal.status_code == streaming.status_code == 200
-        assert set(normal.json()) == {"reply", "recommended_products", "source"}
+        assert set(normal.json()) == {
+            "reply", "recommended_products", "source", "recommendation_id", "model_version",
+        }
         frames = [
             json.loads(line[6:])
             for line in streaming.text.splitlines()

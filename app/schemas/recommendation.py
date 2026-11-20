@@ -91,6 +91,9 @@ class RecommendationResponse(BaseModel):
     target_variant: RecommendationVariantEvidence | None = None
     ranking_policy: Literal["hybrid", "capacity_first"] | None = None
     target_selection_policy: Literal["cheapest_active_in_stock_positive_sale", "requested_variant"] | None = None
+    # Per-request exposure id; echo it with IMPRESSION/CLICK events.
+    recommendation_id: str | None = None
+    model_version: str | None = None
 
     def model_post_init(self, __context):
         if self.recommendation_type and self.strategy == "hybrid":

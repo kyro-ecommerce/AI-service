@@ -142,6 +142,8 @@ def mock_external_dependencies():
                 "app.repositories.user_interaction_repository.record_user_interaction_in_new_session",
                 return_value=True,
             ),
+            # Served-list logging writes to PostgreSQL; keep the default suite offline.
+            patch("app.services.recommendation_tracking.persist_served", return_value=True),
         ):
             yield
     finally:

@@ -58,6 +58,10 @@ class ChatResponse(BaseModel):
     source: str = Field(
         default="database", description="Data origin source: 'database' or 'fallback_json'"
     )
+    recommendation_id: str | None = Field(
+        default=None, description="Exposure id of recommended_products; echo it with events"
+    )
+    model_version: str | None = None
 
 
 class ChatFeedbackRequest(BaseModel):

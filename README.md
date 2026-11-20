@@ -84,6 +84,23 @@ trainer as a verified-data training pipeline. `scripts/simulate_interactions.py`
 `context_data.source = synthetic_simulator` and reported as synthetic).
 Embedding provenance integration and the Docker model-preload layer are unfinished.
 
+## Recommendation tracking (online metrics)
+
+Every recommendation response (similar, accessories, trending, personalized,
+chat cards) carries a per-request `recommendation_id` and `model_version`; the
+ordered product list is logged in `recommendation_served` (migration
+`20261121_0014`). The frontend echoes the id with `IMPRESSION` (card at least
+half visible, once per list and product) and `CLICK` events on
+`POST /api/v1/ai/interactions/event`. Cart adds and purchases are attributed to
+the last recommendation click on the same product by the same actor within 7 days.
+
+```powershell
+python scripts/report_recommendation_metrics.py --days 30
+```
+
+Synthetic rows are excluded unless `--include-synthetic`. Counts are
+descriptive; low traffic does not show that one strategy is better.
+
 ## Verification and remaining limits
 
 ```powershell

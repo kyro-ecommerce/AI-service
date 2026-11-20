@@ -10,6 +10,7 @@ from app.db.models import AIProduct
 from app.repositories.product_repository import list_active_products_safe
 from app.schemas.recommendation import RecommendationResponse
 from app.schemas.user_event import validate_product_interaction_dimensions
+from app.services import recommendation_tracking
 from app.services.recommendation_service import (
     recommend_accessories,
     recommend_personalized_products,
@@ -20,32 +21,59 @@ from app.services.recommendation.sku_projection import InvalidTargetVariant
 
 router = APIRouter()
 
+SessionQuery = Query(default=None, min_length=1, max_length=128)
+
+
+def _served(
+    response: RecommendationResponse,
+    surface: str,
+    identity: RequestIdentity,
+    session_id: str | None,
+    target_product_id: int | None = None,
+) -> RecommendationResponse:
+    """Attach a per-request recommendation_id and log the list shown."""
+    return recommendation_tracking.issue(
+        response,
+        surface=surface,
+        product_ids=[item.product_id for item in response.items],
+        strategy=response.strategy,
+        user_id=identity.trusted_user_id or 0,
+        session_id=session_id,
+        target_product_id=target_product_id,
+        ranking_policy=response.ranking_policy,
+    )
+
 
 @router.get("/recommendations/personalized/{user_id}", response_model=RecommendationResponse)
 def get_personalized_recommendations(
     user_id: int,
     limit: int = Query(default=5, ge=1, le=20),
+    session_id: str | None = SessionQuery,
     db: Session = Depends(get_db),
     _authorized: None = Depends(require_internal_request),
 ) -> RecommendationResponse:
     """Adaptive Personalized Recommendations for User based on recent search & chat interaction history."""
     products, _ = list_active_products_safe(db)
-    return recommend_personalized_products(
+    response = recommend_personalized_products(
         products=products,
         user_id=user_id,
         limit=limit,
         db=db,
     )
+    return _served(response, "personalized", RequestIdentity(user_id), session_id)
 
 
 @router.get("/recommendations/trending", response_model=RecommendationResponse)
 def get_trending_recommendations(
     limit: int = Query(default=5, ge=1, le=20),
+    session_id: str | None = SessionQuery,
     db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
 ) -> RecommendationResponse:
     """Cold-Start Recommendations for New Users: Best Sellers & Top Rated products."""
     products, _ = list_active_products_safe(db)
-    return recommend_trending_products(products=products, limit=limit)
+    response = recommend_trending_products(products=products, limit=limit)
+    return _served(response, "trending", identity, session_id)
 
 
 @router.get("/recommendations/similar/{product_id}", response_model=RecommendationResponse)
@@ -54,7 +82,9 @@ def get_similar_recommendations(
     limit: int = Query(default=5, ge=1, le=20),
     target_variant_id: int | None = Query(default=None, gt=0),
     ranking_policy: Literal["hybrid", "capacity_first"] = Query(default="hybrid"),
+    session_id: str | None = SessionQuery,
     db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
 ) -> RecommendationResponse:
     products, _ = list_active_products_safe(db)
     try:
@@ -69,14 +99,16 @@ def get_similar_recommendations(
     if not response:
         raise HTTPException(status_code=404, detail=f"Product with ID {product_id} not found")
 
-    return response
+    return _served(response, "similar", identity, session_id, product_id)
 
 
 @router.get("/recommendations/accessories/{product_id}", response_model=RecommendationResponse)
 def get_accessory_recommendations(
     product_id: int,
     limit: int = Query(default=5, ge=1, le=20),
+    session_id: str | None = SessionQuery,
     db: Session = Depends(get_db),
+    identity: RequestIdentity = Depends(get_request_identity),
 ) -> RecommendationResponse:
     products, _ = list_active_products_safe(db)
     response = recommend_accessories(products=products, target_product_id=product_id, limit=limit)
@@ -84,7 +116,7 @@ def get_accessory_recommendations(
     if not response:
         raise HTTPException(status_code=404, detail=f"Product with ID {product_id} not found")
 
-    return response
+    return _served(response, "accessories", identity, session_id, product_id)
 
 
 class InteractionRecordRequest(BaseModel):
@@ -130,14 +162,14 @@ class ProductViewRecordRequest(BaseModel):
 
 
 class BehaviourEventRequest(BaseModel):
-    """Browser CLICK / ADD_TO_CART contract; the actor is assigned on the server.
+    """Browser IMPRESSION / CLICK / ADD_TO_CART contract; actor assigned on the server.
 
     ``recommendation_id``/``position``/``model_version`` attribute the event to
     the recommendation response that displayed the product, when there was one.
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    event_type: Literal["CLICK", "ADD_TO_CART"]
+    event_type: Literal["IMPRESSION", "CLICK", "ADD_TO_CART"]
     product_id: int = Field(gt=0, le=9223372036854775807, strict=True)
     event_id: str = Field(min_length=1, max_length=255)
     session_id: str = Field(min_length=1, max_length=128)
@@ -146,6 +178,15 @@ class BehaviourEventRequest(BaseModel):
     position: int | None = Field(default=None, ge=0, le=1000)
     model_version: str | None = Field(default=None, max_length=100)
     surface: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def impression_needs_attribution(self) -> "BehaviourEventRequest":
+        # An impression only means something relative to the list that showed it.
+        if self.event_type == "IMPRESSION" and (
+            not self.recommendation_id or self.position is None
+        ):
+            raise ValueError("IMPRESSION requires recommendation_id and position")
+        return self
 
 
 @router.post("/interactions/event")

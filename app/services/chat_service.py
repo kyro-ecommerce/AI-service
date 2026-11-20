@@ -13,7 +13,7 @@ from app.core.privacy import redact_pii
 from app.repositories.product_repository import list_active_products_safe
 from app.schemas.chat import ChatResponse, RecommendedProductSummary, RecommendedVariantSummary
 from app.schemas.search import SearchResult
-from app.services import llm_client
+from app.services import llm_client, recommendation_tracking
 from app.services.search_service import search_products
 from app.services.consultation_core import filter_catalog
 from app.services.requirement_interpreter import interpret_requirements
@@ -24,6 +24,9 @@ from app.services.catalog_variant import (
 )
 
 logger = logging.getLogger("ai-service.chat")
+
+# Hard-constraint filter, then keyword ranking (no vectors, no personalization yet).
+CHAT_RECOMMENDATION_STRATEGY = "chat_constraint_filter_keyword_rank"
 
 CATALOG_FACTS_POLICY = (
     "Dữ liệu catalog không xác nhận tồn kho, số lượng, khả năng bán của màu, "
@@ -466,11 +469,23 @@ async def process_chat_consultation(
     if recommended_summaries and follow_up:
         reply += "\n\n" + follow_up
 
-    return ChatResponse(
+    response = ChatResponse(
         reply=reply,
         recommended_products=recommended_summaries,
         source=source,
     )
+    if recommended_summaries:
+        # Chat cards are a recommendation surface: id them for IMPRESSION/CLICK.
+        response = await asyncio.to_thread(
+            recommendation_tracking.issue,
+            response,
+            surface="chat",
+            product_ids=[card.product_id for card in recommended_summaries],
+            strategy=CHAT_RECOMMENDATION_STRATEGY,
+            user_id=user_id or 0,
+            session_id=session_id,
+        )
+    return response
 
 
 async def stream_chat_consultation(
@@ -498,6 +513,8 @@ async def stream_chat_consultation(
         "type": "metadata",
         "source": response.source,
         "recommended_products": [product.model_dump() for product in response.recommended_products],
+        "recommendation_id": response.recommendation_id,
+        "model_version": response.model_version,
     }
     yield f"data: {json.dumps(metadata_evt, ensure_ascii=False)}\n\n"
     words = response.reply.split(" ")
