@@ -162,3 +162,20 @@ def test_profile_ranking_prefers_affinity_and_hides_purchased():
 def test_empty_profile_is_labelled_cold_start():
     res = rerank_personalized_by_profile(9, [product(1)], ActorProfile(), Popularity(), limit=1)
     assert res.strategy == "cold_start_fallback_no_history"
+
+
+def test_catalog_fingerprint_is_memoised_only_for_the_repository_snapshot(monkeypatch):
+    from app.repositories import product_repository
+    from app.services import recommendation_service as svc
+
+    calls = []
+    monkeypatch.setattr(svc, "_compute_fingerprint", lambda p: calls.append(1) or f"h{len(p)}")
+    monkeypatch.setattr(svc, "_last_fingerprint", None)
+    snapshot = [product(1, "laptop", "Dell")]
+    monkeypatch.setattr(product_repository, "_products_cache", (snapshot, "database"))
+    assert svc._catalog_fingerprint(snapshot) == svc._catalog_fingerprint(snapshot) == "h1"
+    assert len(calls) == 1
+    other = list(snapshot)                       # not the repository snapshot: always hashed
+    svc._catalog_fingerprint(other)
+    svc._catalog_fingerprint(other)
+    assert len(calls) == 3
