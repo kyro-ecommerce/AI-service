@@ -8,17 +8,18 @@ from urllib.parse import urlsplit
 import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
 from pydantic import ValidationError
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import ORDER_EXCHANGE, RABBITMQ_EXCHANGE, RABBITMQ_QUEUE, RABBITMQ_URL
 from app.core.taxonomy import product_category
 from app.core.product_source import ProductSourceConflictError
-from app.db.models import AIProduct, ProcessedEvent
+from app.db.models import AIProduct, ProcessedEvent, UserInteraction
 from app.db.session import SessionLocal
 from app.repositories.product_repository import deactivate_product, upsert_product
 from app.repositories.user_interaction_repository import record_user_interaction
 from app.schemas.product import Product
-from app.schemas.order_event import OrderCreatedEvent
+from app.schemas.order_event import OrderCancelledEvent, OrderCreatedEvent
 from app.schemas.product_event import ProductEvent, ProductEventType
 from app.schemas.user_event import UserProductEvent
 from app.services.backend_sync import fetch_product_dto_from_backend, map_dto_to_product
@@ -58,6 +59,8 @@ class BoundedEventTracker:
 
 PROCESSED_EVENTS = BoundedEventTracker(max_size=5000)
 ORDER_CREATED_ROUTING_KEY = "order.created"
+ORDER_CANCELLED_ROUTING_KEY = "order.cancelled"
+ORDER_ROUTING_KEYS = (ORDER_CREATED_ROUTING_KEY, ORDER_CANCELLED_ROUTING_KEY)
 CATALOG_ROUTING_KEYS = ("product.created", "product.updated", "product.deleted")
 CLICKSTREAM_ROUTING_KEYS = (
     "user.product.impression",
@@ -99,20 +102,55 @@ def record_order_created(db, order: OrderCreatedEvent, routing_key: str) -> int:
             },
         )
     return recorded
+
+
+def order_created_event_id(order_id: int) -> str:
+    return f"order-created:{order_id}"
+
+
+def order_cancelled_event_id(order_id: int) -> str:
+    return f"order-cancelled:{order_id}"
+
+
+def retract_order_purchases(db, order: OrderCancelledEvent) -> int:
+    """Delete the PURCHASE rows ``record_order_created`` wrote for this order.
+
+    Deleting (rather than flagging) means every PURCHASE reader -- popularity,
+    co-purchase, post-purchase profile, CF training, evaluation -- stops
+    counting the order without each needing its own filter. Rows are matched by
+    their deterministic ``event_id`` prefix; the trailing ``:`` keeps order 12
+    from matching order 123. Re-running is a no-op.
+    """
+    result = db.execute(
+        delete(UserInteraction)
+        .where(UserInteraction.interaction_type == "PURCHASE")
+        .where(UserInteraction.event_id.startswith(f"{order_created_event_id(order.orderId)}:"))
+        .execution_options(synchronize_session=False)
+    )
+    return int(result.rowcount or 0)
+
+
 # Backward-compatibility alias for test assertions
 PROCESSED_EVENT_IDS = PROCESSED_EVENTS._set
 
 
 def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str:
     """Apply an event and its idempotency marker in one database transaction."""
-    is_order = routing_key == ORDER_CREATED_ROUTING_KEY
+    is_order = routing_key in ORDER_ROUTING_KEYS
     order_event: OrderCreatedEvent | None = None
-    if is_order:
+    cancel_event: OrderCancelledEvent | None = None
+    if routing_key == ORDER_CREATED_ROUTING_KEY:
         try:
             order_event = OrderCreatedEvent.model_validate(payload)
         except ValidationError as exc:
             raise InvalidEventPayload(str(exc)) from exc
-        payload = {"event_id": f"order-created:{order_event.orderId}"}
+        payload = {"event_id": order_created_event_id(order_event.orderId)}
+    elif routing_key == ORDER_CANCELLED_ROUTING_KEY:
+        try:
+            cancel_event = OrderCancelledEvent.model_validate(payload)
+        except ValidationError as exc:
+            raise InvalidEventPayload(str(exc)) from exc
+        payload = {"event_id": order_cancelled_event_id(cancel_event.orderId)}
     event_id = payload.get("event_id")
     if not isinstance(event_id, str) or not event_id.strip():
         raise InvalidEventPayload("event_id must be a non-empty string")
@@ -143,11 +181,29 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
                 return "ignored_duplicate"
 
             if order_event is not None:
-                count = record_order_created(db, order_event, routing_key)
+                cancelled_marker = order_cancelled_event_id(order_event.orderId)
+                if db.get(ProcessedEvent, cancelled_marker) is not None:
+                    # Cancellation overtook creation (separate publisher channels
+                    # do not guarantee order): never record a purchase for it.
+                    logger.info(
+                        "Order %s already cancelled; skipping PURCHASE rows",
+                        order_event.orderId,
+                    )
+                    action = "order_already_cancelled"
+                else:
+                    count = record_order_created(db, order_event, routing_key)
+                    logger.info(
+                        "Recorded %d PURCHASE rows for order %s", count, order_event.orderId
+                    )
+                    action = "order_purchase_recorded"
+            elif cancel_event is not None:
+                count = retract_order_purchases(db, cancel_event)
                 logger.info(
-                    "Recorded %d PURCHASE rows for order %s", count, order_event.orderId
+                    "Retracted %d PURCHASE rows for cancelled order %s",
+                    count,
+                    cancel_event.orderId,
                 )
-                action = "order_purchase_recorded"
+                action = "order_purchase_retracted"
             elif is_clickstream:
                 if click_event is None:
                     raise InvalidEventPayload("clickstream event validation failed")
@@ -330,7 +386,8 @@ async def start_event_consumer_loop(retry_interval: int = 5) -> None:
                 order_exchange = await channel.declare_exchange(
                     ORDER_EXCHANGE, type=aio_pika.ExchangeType.TOPIC, durable=True
                 )
-                await queue.bind(order_exchange, routing_key=ORDER_CREATED_ROUTING_KEY)
+                for routing_key in ORDER_ROUTING_KEYS:
+                    await queue.bind(order_exchange, routing_key=routing_key)
 
                 logger.info("✅ AI Service RabbitMQ Consumer listening on queue '%s'", RABBITMQ_QUEUE)
                 await queue.consume(on_message_received)

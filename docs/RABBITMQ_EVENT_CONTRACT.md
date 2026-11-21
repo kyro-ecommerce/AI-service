@@ -34,7 +34,7 @@ product.deleted
 
 ```txt
 Exchange: order-exchange (topic, durable; khai bao giong order-service)
-Routing key: order.created  ->  cung queue ai.product.events
+Routing keys: order.created, order.cancelled  ->  cung queue ai.product.events
 ```
 
 `OrderCreatedEvent {orderId, userId, userEmail, items[{productId, variantId, quantity, price}]}`
@@ -46,6 +46,28 @@ duoc ghi thanh moi dong mot `PURCHASE`:
   `occurred_at_source = broker_received` (duoc dung trong train/eval, khac `server_recorded`).
 - `userEmail` va gia **khong** duoc luu.
 - Event order khong xoa cache recommendation.
+
+### order.cancelled
+
+`OrderCancelledEvent {orderId, userId, items[{productId, quantity}]}` -- order-service
+phat sau khi commit moi lan don chuyen sang `CANCELLED`: user/admin huy (`cancelOrder`),
+het han VNPAY chua thanh toan (`expireVnpayOrder`), va giu hang that bai (`handleStockResult`).
+Payload khong co email hay du lieu ca nhan khac.
+
+AI service **xoa** cac dong `PURCHASE` cua don do trong `user_interactions`
+(`event_id LIKE 'order-created:{orderId}:%'`). Xoa thay vi danh dau de moi noi doc
+PURCHASE (popularity, co-purchase, profile sau mua B5, CF training, evaluation) tu dong
+khong con tinh, khong can them filter o tung query.
+
+- Idempotent: `ProcessedEvent.event_id = order-cancelled:{orderId}`; redeliver la no-op,
+  va xoa lan hai cung khong co dong nao.
+- Cancel den truoc created (hai channel publisher khong dam bao thu tu): khi `order.created`
+  den sau, consumer thay marker `order-cancelled:{orderId}` va khong ghi PURCHASE
+  (action `order_already_cancelled`), van danh dau `order-created:{orderId}`.
+- Chi `orderId` quyet dinh dong nao bi xoa; `items` chi duoc validate (co the rong).
+- Payload sai (thieu/<=0 `orderId`, `userId`, `productId`, `quantity`) -> DLQ, khong retry.
+- PURCHASE tu `user.order.completed` (clickstream, khong gan order id) khong bi anh huong.
+- Cache recommendation khong bi xoa; ket qua cu het theo TTL cua cache.
 
 AI phai ket noi **broker cua backend** (`kyro-rabbitmq`, host port 5672). Broker rieng
 `ai_rabbitmq` trong docker-compose cua AI khong nhan duoc event nao tu backend.
@@ -59,7 +81,7 @@ AI phai ket noi **broker cua backend** (`kyro-rabbitmq`, host port 5672). Broker
 
 Browser khong bao gio gui `user_id`. Khi mot `session_id` lan dau co identity
 (sau dang nhap), cac dong an danh <= 7 ngay cua session do duoc gan cho user.
-PURCHASE chi den tu `order.created`, khong nhan tu browser.
+PURCHASE chi den tu `order.created` (va bi rut lai boi `order.cancelled`), khong nhan tu browser.
 
 ## Event Payload Mau
 
