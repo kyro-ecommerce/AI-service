@@ -224,3 +224,14 @@ def test_budget_figures_from_the_customer_are_not_flagged():
     plan = _plan([])
     plan.state = ConversationState(budget_max=20_000_000)
     assert chat_v2.sentence_ok("Chưa có mẫu nào dưới 20 triệu.", plan)
+
+
+def test_question_facts_name_the_position_in_the_previous_list():
+    first = turn("laptop dưới 20 triệu")
+    conversation = first.conversation_id
+    plan = asyncio.run(chat_v2.prepare_turn(
+        "cái thứ 2 màn hình bao nhiêu inch?", conversation_id=conversation, user_id=0,
+        session_id="s-1", db=None, limit=4, http_client=None,
+    ))
+    assert plan.positions == [2]
+    assert "vị trí số 2" in plan.facts and plan.facts.splitlines()[2].startswith("2. ")
