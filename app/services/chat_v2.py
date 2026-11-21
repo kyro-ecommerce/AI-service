@@ -168,7 +168,8 @@ def _cheaper_than(state: ConversationState, references: list[int], catalog: dict
         anchor = catalog.get(state.last_shown_ids[references[0] - 1])
         cap = _price(anchor) - 1 if anchor and _price(anchor) else None
     else:
-        cap = int(sum(_price(p) for p in shown) / len(shown) * CHEAPER_RATIO)
+        # Rounded down to 100k so the chip reads "≤ 16tr", not "≤ 16,074,690đ".
+        cap = int(sum(_price(p) for p in shown) / len(shown) * CHEAPER_RATIO) // 100_000 * 100_000
     if not cap:
         return state
     return state.model_copy(update={"budget_max": cap, "budget_target": None})

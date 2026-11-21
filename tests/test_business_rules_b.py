@@ -79,13 +79,19 @@ def test_exclusion_overrides_a_previous_preference():
     assert state.brands_preferred == [] and state.brands_exclude == ["Dell"]
 
 
+def test_strict_brand_replaces_earlier_preferences():
+    state = apply_update(ConversationState(), StateUpdate(brands_preferred=["Dell"]))
+    state = apply_update(state, StateUpdate(brands_include=["Asus"]))
+    assert state.brands_preferred == [] and state.chips() == ["Chỉ Asus"]
+
+
 # ------------------------------------------------------------ B3 relative "rẻ hơn"
 def test_cheaper_than_a_referenced_item_or_85_percent_of_the_average():
     catalog = {p.product_id: p for p in LAPTOPS}
     state = ConversationState(category="laptop", last_shown_ids=[1, 2, 3])
     assert chat_v2._cheaper_than(state, [3], catalog).budget_max == 16_999_999
     average = (14_000_000 + 15_200_000 + 17_000_000) / 3
-    assert chat_v2._cheaper_than(state, [], catalog).budget_max == int(average * 0.85)
+    assert chat_v2._cheaper_than(state, [], catalog).budget_max == int(average * 0.85) // 100_000 * 100_000
 
 
 # ------------------------------------------------------------ B4 similar price band
