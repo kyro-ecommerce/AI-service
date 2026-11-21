@@ -53,6 +53,13 @@ SERVING_INCLUDE_SYNTHETIC = os.getenv("SERVING_INCLUDE_SYNTHETIC", "false").lowe
     "yes",
 }
 
+# Internal/test accounts excluded from shared signals (trending, co-purchase),
+# e.g. "8,16". Their own personalised history still works.
+EXCLUDED_USER_IDS = tuple(
+    int(item) for item in os.getenv("AI_EXCLUDED_USER_IDS", "").replace(" ", "").split(",")
+    if item.isdigit()
+)
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # A real, independently verified HF commit is required before embedding use.

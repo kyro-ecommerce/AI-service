@@ -157,6 +157,7 @@ def rank_products(
     soft_preferences: Sequence[str] = (),
     profile=None,
     popularity: dict[int, float] | None = None,
+    popular_ids: set[int] | None = None,
     k: int = 4,
 ) -> list[RankedProduct]:
     """Weighted blend of available signals; missing signals are dropped and the
@@ -195,15 +196,16 @@ def rank_products(
         if "soft" in weights:
             parts["soft"] = soft.get(pid, 0.0)
         score = sum(weights[name] * value for name, value in parts.items())
+        # Reasons are claims shown to the customer: only absolute evidence.
+        # (Semantic and popularity scores are relative, so the top item would
+        # always look "matching"/"popular"; they rank but do not explain.)
         reasons = []
         if parts.get("soft", 0) > 0:
-            reasons.append("khớp ưu tiên của bạn")
-        if parts.get("semantic", 0) >= 0.7:
-            reasons.append("sát nhu cầu bạn mô tả")
+            reasons.append("khớp ưu tiên của bạn theo mô tả catalog")
         if parts.get("profile", 0) >= 0.5:
             reasons.append("gần với sản phẩm bạn hay xem")
-        if parts.get("popularity", 0) >= 0.5:
-            reasons.append("được quan tâm nhiều gần đây")
+        if popular_ids and pid in popular_ids:
+            reasons.append("được nhiều người quan tâm gần đây")
         ranked.append(RankedProduct(product, score, reasons, parts))
 
     ranked.sort(key=lambda r: (-r.score, _price(r.product), r.product.product_id))
@@ -233,7 +235,7 @@ def diversify(ranked: list[RankedProduct], k: int) -> list[RankedProduct]:
 
 
 def behaviour_signals(db: Any, user_id: int, products: Sequence[Product]):
-    """(profile, normalised popularity) from the recommendation signal module."""
+    """(profile, normalised popularity, ids with >= 3 interested people)."""
     from app.services.recommendation import signals
 
     popularity, _ = signals.global_signals(db)
@@ -244,4 +246,5 @@ def behaviour_signals(db: Any, user_id: int, products: Sequence[Product]):
         profile = signals.actor_profile(
             rows, f"user:{user_id}", {p.product_id: p for p in products}, now
         )
-    return profile, signals.normalise_scores(popularity.score)
+    popular_ids = {pid for pid in popularity.score if popularity.is_popular(pid)}
+    return profile, signals.normalise_scores(popularity.score), popular_ids

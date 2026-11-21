@@ -5,8 +5,10 @@ access. Simulated rows (``context_data.source`` containing "synthetic") are
 excluded unless ``SERVING_INCLUDE_SYNTHETIC`` is enabled.
 
 Signals:
-* decayed popularity: sum of action weights with exponential time decay over
-  a recent window (VIEW < CLICK < ADD_TO_CART < PURCHASE);
+* decayed popularity: action weights with exponential time decay over a
+  recent window (VIEW < CLICK < ADD_TO_CART < PURCHASE). Each person counts at
+  most once per action type per product (their latest occurrence), so one
+  account refreshing a page cannot drive what everyone sees;
 * co-purchase: distinct orders containing both products;
 * actor profile: decayed affinity per canonical category and brand, plus the
   products the actor already bought.
@@ -45,7 +47,13 @@ class InteractionRow:
 @dataclass
 class Popularity:
     score: dict[int, float] = field(default_factory=dict)
+    # product -> Counter(action -> number of distinct people)
     counts: dict[int, Counter] = field(default_factory=dict)
+    # product -> number of distinct people with any weighted action
+    people: dict[int, int] = field(default_factory=dict)
+
+    def is_popular(self, product_id: int, min_people: int = 3) -> bool:
+        return self.people.get(product_id, 0) >= min_people
 
 
 @dataclass
@@ -74,18 +82,22 @@ def decayed_popularity(
     window: timedelta = TRENDING_WINDOW,
     half_life_days: float = TRENDING_HALF_LIFE_DAYS,
 ) -> Popularity:
-    result = Popularity()
-    counts: dict[int, Counter] = defaultdict(Counter)
-    scores: dict[int, float] = defaultdict(float)
+    latest: dict[tuple[str, int, str], float] = {}
     for row in rows:
         weight = ACTION_WEIGHTS.get(row.kind)
         age = now - _utc(row.occurred_at)
         if weight is None or age > window or age < timedelta(0):
             continue
-        scores[row.product_id] += weight * _decay(age, half_life_days)
-        counts[row.product_id][row.kind] += 1
-    result.score, result.counts = dict(scores), dict(counts)
-    return result
+        key = (row.actor, row.product_id, row.kind)
+        latest[key] = max(latest.get(key, 0.0), weight * _decay(age, half_life_days))
+    scores: dict[int, float] = defaultdict(float)
+    counts: dict[int, Counter] = defaultdict(Counter)
+    people: dict[int, set[str]] = defaultdict(set)
+    for (actor, product_id, kind), value in latest.items():
+        scores[product_id] += value
+        counts[product_id][kind] += 1
+        people[product_id].add(actor)
+    return Popularity(dict(scores), dict(counts), {pid: len(a) for pid, a in people.items()})
 
 
 def co_purchase_orders(rows: Iterable[InteractionRow]) -> dict[int, Counter]:
@@ -183,6 +195,8 @@ def load_rows(
     from app.core.config import SERVING_INCLUDE_SYNTHETIC
     from app.db.models import UserInteraction
 
+    from app.core.config import EXCLUDED_USER_IDS
+
     include = SERVING_INCLUDE_SYNTHETIC if include_synthetic is None else include_synthetic
     query = (
         select(UserInteraction)
@@ -192,6 +206,9 @@ def load_rows(
     )
     if user_id is not None:
         query = query.where(UserInteraction.user_id == user_id)
+    elif EXCLUDED_USER_IDS:
+        # Internal/test accounts never shape what other shoppers see.
+        query = query.where(UserInteraction.user_id.notin_(EXCLUDED_USER_IDS))
     try:
         records = db.scalars(query).all()
     except Exception:  # signals are optional; rankers fall back to catalog data
