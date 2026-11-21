@@ -44,6 +44,8 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
 
 LLM_REQUEST_TIMEOUT_SECONDS = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "8"))
 LLM_TOTAL_BUDGET_SECONDS = float(os.getenv("LLM_TOTAL_BUDGET_SECONDS", "12"))
+# Load the query encoder in the background at startup (first search stays fast).
+EMBEDDING_WARMUP = os.getenv("EMBEDDING_WARMUP", "true").lower() == "true"
 LLM_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "768"))
 
 # Serving rankers ignore simulator rows unless explicitly enabled (demo only).

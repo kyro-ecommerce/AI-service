@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from app.schemas.conversation import ConversationState, StateUpdate, apply_update, target_ceiling
 from app.schemas.product import Product
-from app.services import chat_service, chat_v2
+from app.services import chat_common, chat_v2
 from app.services.chat_nlu import parse_turn
 from app.services.chat_tools import rank_products
 from app.services.recommendation.ranker import in_price_band, rerank_personalized_by_profile
@@ -42,7 +42,7 @@ def test_around_is_a_target_with_15_percent_headroom():
 
 
 def test_target_keeps_slightly_higher_items_and_ranks_by_closeness(monkeypatch):
-    monkeypatch.setattr(chat_service, "_load_chat_catalog_snapshot", lambda: (LAPTOPS, "database"))
+    monkeypatch.setattr(chat_common, "_load_chat_catalog_snapshot", lambda: (LAPTOPS, "database"))
     response = turn("laptop tầm 15 củ")
     ids = [p.product_id for p in response.recommended_products]
     assert 3 in ids and 4 not in ids          # 17tr kept (<= 17.25tr), 18tr excluded
@@ -66,7 +66,7 @@ def test_named_brand_is_a_preference_and_markers_make_it_strict():
 
 
 def test_preferred_brand_ranks_first_but_others_remain(monkeypatch):
-    monkeypatch.setattr(chat_service, "_load_chat_catalog_snapshot", lambda: (LAPTOPS, "database"))
+    monkeypatch.setattr(chat_common, "_load_chat_catalog_snapshot", lambda: (LAPTOPS, "database"))
     response = turn("laptop dưới 20 triệu Asus")
     ids = [p.product_id for p in response.recommended_products]
     assert ids[0] == 2 and len(ids) > 1

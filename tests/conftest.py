@@ -64,11 +64,6 @@ def _patched_list_active_products_safe(db=None):
     return (_FAKE_PRODUCTS_FULL, "fallback_json")
 
 
-def _patched_search_products(products=None, query="", limit=6, db=None, **kwargs):
-    """Respect the requested result limit for contract tests."""
-    return _FAKE_PRODUCTS_FULL[:limit]
-
-
 def _override_get_db():
     """Provide a hermetic DB double for unit and API contract tests."""
     yield MagicMock(name="test_db_session")
@@ -91,19 +86,8 @@ def _override_chat_rate_limit():
     return None
 
 
-async def _fake_gemini(user_message: str = "", *args, **kwargs):
-    msg = (user_message or "").lower()
-    if any(keyword in msg for keyword in ["bao hanh", "bảo hành"]):
-        return "Kyro Store cam ket bao hanh chinh hang 12-24 thang."
-    return "Mock AI: Kyro Store co nhieu san pham."
-
-
 def _fake_load_chat_catalog_snapshot():
     return _FAKE_PRODUCTS_FULL, "fallback_json"
-
-
-def _fake_get_recent_intents_in_new_session(user_id):
-    return set()
 
 
 class _OfflineLLM:
@@ -170,18 +154,12 @@ def mock_external_dependencies():
                 new=_patched_list_active_products_safe,
             ),
             patch(
-                "app.services.chat_service.list_active_products_safe",
+                "app.services.chat_common.list_active_products_safe",
                 new=_patched_list_active_products_safe,
             ),
-            patch("app.services.chat_service.search_products", new=_patched_search_products),
-            patch("app.services.chat_service.generate_llm_reply", new=_fake_gemini),
             patch(
-                "app.services.chat_service._load_chat_catalog_snapshot",
+                "app.services.chat_common._load_chat_catalog_snapshot",
                 new=_fake_load_chat_catalog_snapshot,
-            ),
-            patch(
-                "app.services.chat_service._get_recent_intents_in_new_session",
-                new=_fake_get_recent_intents_in_new_session,
             ),
             patch(
                 "app.repositories.user_interaction_repository.record_user_interaction_in_new_session",
@@ -193,8 +171,6 @@ def mock_external_dependencies():
             patch("app.repositories.conversation_repository.save_turn", new=_fake_save_turn),
             patch("app.services.chat_v2.llm_client", new=_OfflineLLM),
             patch("app.services.chat_nlu.llm_client", new=_OfflineLLM),
-            # Single-turn interpreter: tests that need a provider patch it explicitly.
-            patch("app.services.requirement_interpreter._request_interpretation", return_value=None),
         ):
             yield
     finally:

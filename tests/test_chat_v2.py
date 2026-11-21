@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.schemas.conversation import ConversationState, StateUpdate, apply_update
 from app.schemas.product import Product
-from app.services import chat_service, chat_v2
+from app.services import chat_common, chat_v2
 from app.services.chat_nlu import _validated_llm_update, parse_turn
 from tests.conftest import FAKE_CONVERSATIONS
 
@@ -32,7 +32,7 @@ CATALOG = [
 @pytest.fixture(autouse=True)
 def catalog(monkeypatch):
     FAKE_CONVERSATIONS.clear()
-    monkeypatch.setattr(chat_service, "_load_chat_catalog_snapshot", lambda: (CATALOG, "database"))
+    monkeypatch.setattr(chat_common, "_load_chat_catalog_snapshot", lambda: (CATALOG, "database"))
     yield
     FAKE_CONVERSATIONS.clear()
 
