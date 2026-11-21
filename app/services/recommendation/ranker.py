@@ -423,15 +423,11 @@ PROFILE_WEIGHTS = {"category": 0.5, "brand": 0.2, "popularity": 0.3}
 _PRIOR_EPSILON = 1e-3  # catalog prior only breaks ties between equal behaviour scores
 
 
-def _behaviour_reason(counts) -> str:
-    views = counts.get("VIEW", 0) + counts.get("CLICK", 0)
-    intents = counts.get("ADD_TO_CART", 0) + counts.get("PURCHASE", 0)
-    parts = []
-    if views:
-        parts.append(f"{views} lượt xem")
-    if intents:
-        parts.append(f"{intents} lượt thêm giỏ/mua")
-    return "Được quan tâm trong 14 ngày qua (" + ", ".join(parts) + ")"
+def _behaviour_reason(counts, people: int) -> str:
+    """Counts are distinct people, never raw clicks."""
+    buyers = counts.get("ADD_TO_CART", 0) + counts.get("PURCHASE", 0)
+    detail = f"{people} người quan tâm" + (f", {buyers} lượt thêm giỏ/mua" if buyers else "")
+    return f"Được quan tâm trong 14 ngày qua ({detail})"
 
 
 def rerank_trending_by_interactions(
@@ -450,7 +446,10 @@ def rerank_trending_by_interactions(
         behaviour = popularity.score.get(product.product_id, 0.0)
         score = behaviour + _PRIOR_EPSILON * _catalog_prior_score(product)
         reason = (
-            _behaviour_reason(popularity.counts.get(product.product_id, {}))
+            _behaviour_reason(
+                popularity.counts.get(product.product_id, {}),
+                popularity.people.get(product.product_id, 0),
+            )
             if behaviour > 0 else _catalog_rating_reason(product)
         )
         scored.append((score, product, reason))

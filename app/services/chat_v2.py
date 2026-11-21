@@ -52,6 +52,9 @@ SYSTEM_PROMPT = (
     "- Nếu nêu giá thì dùng đúng giá trong dữ kiện.\n"
     "- Giải thích ngắn vì sao từng sản phẩm hợp với nhu cầu; có thể kết thúc bằng một câu hỏi "
     "giúp thu hẹp lựa chọn.\n"
+    "- KHÔNG khẳng định thuộc tính mà dữ kiện không ghi (pin, trọng lượng/mỏng nhẹ, chống ồn, "
+    "chất lượng màn hình, camera, sạc nhanh, độ bền...). Nếu khách quan tâm thuộc tính đó, nói rõ "
+    "catalog chưa có thông tin.\n"
 )
 
 
@@ -98,6 +101,10 @@ def _spec_line(product: Product, variants: list | None) -> str:
             parts.append(f"bộ nhớ {product.rom_capacity}")
     if product.screen_size:
         parts.append(f"màn hình {product.screen_size}")
+    if product.battery_capacity:
+        parts.append(f"pin {product.battery_capacity}")
+    if product.weight:
+        parts.append(f"trọng lượng {product.weight}")
     return ", ".join(parts)
 
 
@@ -119,7 +126,14 @@ def _facts(plan: TurnPlan) -> str:
             + (f" | Lý do khớp: {why}" if why else "")
         )
     conditions = ", ".join(plan.state.chips()) or "chưa có"
-    return f"Điều kiện hiện tại: {conditions}\n" + "\n".join(lines)
+    wanted = [*plan.state.soft_preferences, *([plan.state.usage] if plan.state.usage else [])]
+    evidence = _evidence_text(plan)
+    unconfirmed = [w for w in wanted if fold(w) not in evidence]
+    note = (
+        "\nƯu tiên của khách mà catalog CHƯA có dữ liệu xác nhận: " + ", ".join(unconfirmed)
+        if unconfirmed else ""
+    )
+    return f"Điều kiện hiện tại: {conditions}{note}\n" + "\n".join(lines)
 
 
 def _list_answer(plan: TurnPlan, intro: str) -> str:
@@ -145,7 +159,12 @@ def _target(plan: TurnPlan, catalog: dict[int, Product], position: int | None) -
 def _search(plan: TurnPlan, catalog: list[Product], message: str, user_id: int, db, k: int) -> None:
     state = plan.state
     excluded = set(state.last_shown_ids) if plan.interpretation.wants_alternatives else set()
-    eligibility = chat_tools.eligible_products(state.to_requirements(message), catalog, title_category=True)
+    from app.services.catalog_quality import recommendable
+
+    # Products with implausible prices are not recommended until the catalog is fixed.
+    eligibility = chat_tools.eligible_products(
+        state.to_requirements(message), recommendable(catalog), title_category=True
+    )
     candidates = [p for pid, p in eligibility.candidates.items() if pid not in excluded]
     if not candidates:
         conditions = ", ".join(state.chips())
@@ -155,12 +174,12 @@ def _search(plan: TurnPlan, catalog: list[Product], message: str, user_id: int, 
             if conditions else ASK_CATEGORY
         )
         return
-    profile, popularity = chat_tools.behaviour_signals(db, user_id, catalog)
+    profile, popularity, popular_ids = chat_tools.behaviour_signals(db, user_id, catalog)
     query_text = " ".join(filter(None, [message, state.usage, *state.soft_preferences]))
     ranked = chat_tools.rank_products(
         candidates, query_text=query_text,
         soft_preferences=[*state.soft_preferences, *([state.usage] if state.usage else [])],
-        profile=profile, popularity=popularity, k=k,
+        profile=profile, popularity=popularity, popular_ids=popular_ids, k=k,
     )
     plan.products = [r.product for r in ranked]
     plan.reasons = {r.product.product_id: r.reasons for r in ranked}
@@ -274,8 +293,54 @@ def _price_value(number: str, unit: str) -> int | None:
         return None
 
 
+# Attribute claims and the catalog terms that can support them (folded text).
+_CLAIMS: dict[str, tuple[str, ...]] = {
+    r"\bpin\b": ("pin ",),
+    r"\bmong nhe\b|\bsieu nhe\b|\bgon nhe\b": ("trong luong", "kg"),
+    r"\bchong on\b": ("chong on",),
+    r"\bman hinh dep\b|\bsac net\b|\bruc ro\b|\bhien thi dep\b": (
+        "oled", "amoled", "120 hz", "144 hz", "240 hz", "promotion",
+    ),
+    r"\bsac nhanh\b": ("sac nhanh",),
+    r"\bcamera\b|\bchup anh\b": ("camera",),
+    r"\bben bi\b|\bchong nuoc\b|\bkhang nuoc\b": ("chong nuoc", "ip6"),
+}
+_DISCLAIMER = re.compile(
+    r"chua co thong tin|chua ghi nhan|khong co du lieu|chua ro|chua xac nhan|chua co du lieu"
+)
+
+
+def _evidence_text(plan: TurnPlan) -> str:
+    """Folded catalog facts of the shown products (not the customer's wishes)."""
+    rows = []
+    for product in plan.products:
+        rows.append(product.title)
+        rows.append(_spec_line(product, plan.matched_variants.get(product.product_id)))
+        rows.append(product.description or "")
+        rows += list(product.tags or [])
+    return fold(" ".join(rows))
+
+
+def unsupported_claim(sentence: str, plan: TurnPlan) -> bool:
+    """True when the sentence asserts an attribute no shown product's facts support.
+
+    Sentences that say the catalog lacks the information are allowed.
+    """
+    folded = fold(sentence)
+    if _DISCLAIMER.search(folded):
+        return False
+    evidence = _evidence_text(plan)
+    return any(
+        re.search(pattern, folded) and not any(term in evidence for term in support)
+        for pattern, support in _CLAIMS.items()
+    )
+
+
 def sentence_ok(sentence: str, plan: TurnPlan) -> bool:
-    """A sentence may only link shown products and quote their prices (1% tolerance)."""
+    """A sentence may only link shown products, quote their prices (1% tolerance)
+    and claim attributes the catalog facts support."""
+    if unsupported_claim(sentence, plan):
+        return False
     allowed_ids = {p.product_id for p in plan.products}
     if any(int(pid) not in allowed_ids for pid in _LINK.findall(sentence)):
         return False

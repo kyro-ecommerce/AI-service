@@ -18,6 +18,7 @@ from app.services.recommendation.retrieval import (
     retrieve_candidates_for_trending,
 )
 from app.services.recommendation import signals
+from app.services.catalog_quality import recommendable
 from app.services.consultation_core import canonical_category
 from app.services.recommendation.sku_ranker import (
     SIMILAR_SKU_POLICY_VERSION, rank_similar_snapshot,
@@ -69,7 +70,11 @@ def recommend_similar_products(
     cache_key = f"rec_similar:{SIMILAR_SKU_POLICY_VERSION}:{ranking_policy}:{target_product_id}:{target_variant_id}:{limit}:{fingerprint}"
 
     def _compute():
-        return rank_similar_snapshot(products, target_product, limit, target_variant_id=target_variant_id, ranking_policy=ranking_policy)
+        # Suspect prices are never recommended; the target itself stays usable.
+        pool = recommendable(products)
+        if target_product not in pool:
+            pool = [*pool, target_product]
+        return rank_similar_snapshot(pool, target_product, limit, target_variant_id=target_variant_id, ranking_policy=ranking_policy)
 
     return get_cached_recommendation(cache_key, _compute)
 
@@ -121,7 +126,7 @@ def recommend_accessories(
             canonical_category(target_product.category_name), []
         )
         candidates = retrieve_candidates_for_accessories(
-            products=products,
+            products=recommendable(products),
             target_product=target_product,
             allowed_categories=allowed_categories,
             limit=None,
@@ -132,7 +137,7 @@ def recommend_accessories(
             limit=limit,
         )
         _, pairs = signals.global_signals(db)
-        co = _co_purchased(products, target_product, pairs, limit)
+        co = _co_purchased(recommendable(products), target_product, pairs, limit)
         if not co:
             return by_category
         # Evidence first: products actually bought together, then category suggestions.
@@ -161,7 +166,7 @@ def recommend_trending_products(
     cache_key = f"rec_trending_v6_interactions:{limit}:{_catalog_fingerprint(products)}"
 
     def _compute():
-        candidates = retrieve_candidates_for_trending(products=products, limit=None)
+        candidates = retrieve_candidates_for_trending(products=recommendable(products), limit=None)
         popularity, _ = signals.global_signals(db)
         return rerank_trending_by_interactions(candidates, popularity, limit)
 
@@ -181,7 +186,7 @@ def recommend_personalized_products(
     """Two-Stage Adaptive Personalized Recommendation Pipeline based on recent interaction history & Collaborative Filtering."""
     from app.services.recommendation.collaborative import load_user_item_model
 
-    candidates = retrieve_candidates_for_trending(products=products, limit=None)
+    candidates = retrieve_candidates_for_trending(products=recommendable(products), limit=None)
     model = load_user_item_model()
     if model is not None:
         from app.schemas.recommendation import RecommendationItem
