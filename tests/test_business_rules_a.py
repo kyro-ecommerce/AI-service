@@ -127,3 +127,35 @@ def test_relative_scores_no_longer_become_customer_facing_reasons():
     assert all(not r.reasons for r in ranked)
     ranked = rank_products(items, query_text="", popularity={1: 1.0, 2: 0.2}, popular_ids={1}, k=2)
     assert ranked[0].reasons == ["được nhiều người quan tâm gần đây"]
+
+
+# ------------------------------------------------------------ prose states the shown card count
+def _three():
+    return _plan([Product(product_id=i, title=f"Laptop {i}", category_name="laptop", original_price=20_000_000 + i)
+                  for i in (4, 6, 14)])
+
+
+def test_sentence_with_a_wrong_product_count_is_dropped():
+    plan = _three()
+    for sentence in ("Có hai lựa chọn rất phù hợp với bạn.", "Mình gợi ý 2 mẫu sau.", "Đây là bốn sản phẩm tốt."):
+        assert not chat_v2.sentence_ok(sentence, plan), sentence
+    assert chat_v2.sentence_ok("Có ba lựa chọn rất phù hợp với bạn.", plan)
+    assert chat_v2.sentence_ok("Mình gợi ý 3 mẫu sau.", plan)
+
+
+def test_positions_and_articles_are_not_counts():
+    plan = _three()
+    for sentence in (
+        "Cái thứ 2 mẫu này nhẹ hơn.",
+        "Sản phẩm số 2 mẫu Dell có giá tốt.",
+        "Dell XPS là một lựa chọn tốt.",
+        "Hai mẫu đầu có giá gần nhau.",
+        "Lợi ích từ sản phẩm này rõ ràng.",
+    ):
+        assert chat_v2.sentence_ok(sentence, plan), sentence
+
+
+def test_facts_state_the_exact_count():
+    plan = _three()
+    plan.llm_task = "x"
+    assert "Danh sách có đúng 3 sản phẩm" in chat_v2._facts(plan)
