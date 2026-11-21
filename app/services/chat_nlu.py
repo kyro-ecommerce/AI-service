@@ -93,13 +93,14 @@ def _budget(folded: str, update: StateUpdate) -> None:
     if match := _LOWER.search(folded):
         if not _UPPER.search(folded[: match.start()]):
             update.budget_min = _money(*match.groups())
-    if match := _AROUND.search(folded):
-        # "tầm 15 củ" is treated as an upper bound and shown as "≤ 15tr".
-        update.budget_max = update.budget_max or _money(*match.groups())
-    if update.budget_max is None and update.budget_min is None:
+    if update.budget_max is None and (match := _AROUND.search(folded)):
+        # Rule B1: "tầm 15 củ" is a soft target (eligible up to +15 %), not a cap.
+        update.budget_target = _money(*match.groups())
+    if update.budget_max is None and update.budget_min is None and update.budget_target is None:
         amounts = _MONEY.findall(folded)
         if len(amounts) == 1:
-            update.budget_max = _money(*amounts[0])
+            # A bare amount ("laptop 20 triệu") is read the same way as "tầm".
+            update.budget_target = _money(*amounts[0])
 
 
 def _capacities(folded: str, update: StateUpdate) -> None:
@@ -118,12 +119,24 @@ def _brands(message: str, folded: str, update: StateUpdate, catalog_brands: set[
     for word in _EXCLUDE.findall(folded):
         if word in known:
             excluded.add(known[word])
-    included = {
-        original for key, original in known.items()
-        if re.search(rf"(?<![0-9a-z]){re.escape(key)}(?![0-9a-z])", folded) and original not in excluded
-    }
+    strict, preferred = set(), set()
+    for key, original in known.items():
+        if original in excluded:
+            continue
+        match = re.search(rf"(?<![0-9a-z]){re.escape(key)}(?![0-9a-z])", folded)
+        if not match:
+            continue
+        # Rule B2: naming a brand is a preference; "chỉ/phải là/duy nhất X" or
+        # "X thôi" makes it a requirement.
+        before = folded[max(0, match.start() - 16): match.start()]
+        after = folded[match.end(): match.end() + 8]
+        if re.search(r"\b(?:chi|phai la|chi lay|duy nhat|bat buoc)\s+(?:hang\s+)?$", before) or re.match(r"\s+thoi\b", after):
+            strict.add(original)
+        else:
+            preferred.add(original)
     update.brands_exclude = sorted(excluded)
-    update.brands_include = sorted(included)
+    update.brands_include = sorted(strict)
+    update.brands_preferred = sorted(preferred)
 
 
 def references(folded: str, shown: int) -> list[int]:
@@ -172,7 +185,8 @@ def parse_turn(
     alternatives = bool(_ALTERNATIVES.search(folded))
     new_slots = any(
         getattr(update, name) for name in
-        ("category", "budget_min", "budget_max", "ram_min", "storage_min", "brands_include", "brands_exclude", "usage")
+        ("category", "budget_min", "budget_max", "budget_target", "ram_min", "storage_min",
+         "brands_include", "brands_preferred", "brands_exclude", "usage")
     ) or bool(update.soft_preferences)
 
     if _COMPARE.search(folded) and (len(refs) >= 2 or (not refs and len(state.last_shown_ids) >= 2)):
@@ -182,7 +196,8 @@ def parse_turn(
     elif _SIMILAR.search(folded) and refs:
         intent = "similar_to"
     elif refs and not cheaper and _QUESTION.search(folded) and not (
-        update.budget_min or update.budget_max or update.brands_include or update.brands_exclude
+        update.budget_min or update.budget_max or update.budget_target
+        or update.brands_include or update.brands_preferred or update.brands_exclude
     ):
         # "cái thứ 2 màn hình bao nhiêu inch?": "màn hình" is an attribute here.
         intent = "product_question"
@@ -208,6 +223,7 @@ _LLM_SCHEMA = {
         "category": {"type": "string", "nullable": True},
         "budget_min": {"type": "integer", "nullable": True},
         "budget_max": {"type": "integer", "nullable": True},
+        "budget_target": {"type": "integer", "nullable": True},
         "ram_min": {"type": "integer", "nullable": True},
         "storage_min": {"type": "integer", "nullable": True},
         "brands_include": {"type": "array", "items": {"type": "string"}},
@@ -226,6 +242,8 @@ _LLM_SYSTEM = (
     "category chỉ dùng: " + ", ".join(CATEGORY_NAMES) + ". "
     "Tiền tính bằng VND (20 củ = 20000000). RAM/bộ nhớ tính GB (1TB = 1000). "
     "Chỉ điền số khi khách viết số đó trong tin nhắn hiện tại. "
+    "'dưới/tối đa X' là budget_max; 'tầm/khoảng X' hoặc chỉ nêu X là budget_target. "
+    "Hãng chỉ vào brands_include khi khách nói 'chỉ', 'phải là' hoặc 'X thôi'; còn lại là ưu tiên. "
     "references là vị trí (bắt đầu từ 1) trong danh sách sản phẩm vừa hiển thị. "
     "usage là mục đích ngắn (ví dụ: lập trình). soft_preferences là ưu tiên không bắt buộc (ví dụ: pin trâu). "
     "Thông tin đã có trong state thì không cần lặp lại."
@@ -241,15 +259,25 @@ def _validated_llm_update(raw: dict, message: str, parsed: TurnInterpretation, s
     category = raw.get("category")
     if update.category is None and category in CATEGORY_NAMES:
         update.category = category
+    has_budget = any((update.budget_min, update.budget_max, update.budget_target))
     for slot, allowed in (("budget_min", allowed_money), ("budget_max", allowed_money),
+                          ("budget_target", allowed_money),
                           ("ram_min", allowed_capacity), ("storage_min", allowed_capacity)):
         value = raw.get(slot)
+        if slot.startswith("budget") and has_budget:
+            continue   # the parser already read a budget from this message
         if getattr(update, slot) is None and isinstance(value, int) and value in allowed:
             setattr(update, slot, value)
-    for slot in ("brands_include", "brands_exclude"):
-        named = [b for b in raw.get(slot) or [] if isinstance(b, str) and fold(b).strip() and fold(b) in folded]
-        if named and not getattr(update, slot):
-            setattr(update, slot, sorted(set(named)))
+
+    def named(slot: str) -> list[str]:
+        return [b for b in raw.get(slot) or [] if isinstance(b, str) and fold(b).strip() and fold(b) in folded]
+
+    if not update.brands_exclude:
+        update.brands_exclude = sorted(set(named("brands_exclude")))
+    # Model-proposed brands are preferences; strictness comes only from the parser's markers.
+    known = {b.casefold() for b in (*update.brands_include, *update.brands_preferred, *update.brands_exclude)}
+    extra_brands = [b for b in named("brands_include") if b.casefold() not in known]
+    update.brands_preferred = sorted(set(update.brands_preferred) | set(extra_brands))
     usage = raw.get("usage")
     if update.usage is None and isinstance(usage, str) and 0 < len(usage.strip()) <= 60:
         update.usage = usage.strip()

@@ -102,6 +102,18 @@ Embedding provenance integration and the Docker model-preload layer are unfinish
    with links or prices that do not match the cards are dropped, and a
    deterministic answer is used when the LLM is unavailable.
 
+Business rules (group B):
+
+* "tầm X" is a target, not a cap: products up to X × 1.15 stay eligible and
+  closeness to X ranks higher (chip `~ Xtr`); "dưới X" remains a hard cap.
+* A named brand ("laptop Dell") is a preference ranked first (chip `Ưu tiên`);
+  only "chỉ / phải là / chỉ lấy … / … thôi" makes it strict (chip `Chỉ`).
+* "rẻ hơn cái N" caps below that item's price; plain "rẻ hơn" caps at 85 % of
+  the average price of the cards just shown.
+* Similar products prefer the ±30 % price band (`similar-sku-v2.3-*`).
+* For 30 days after a purchase the bought category is damped (×0.3) and its
+  accessories are promoted in personalised recommendations.
+
 Lists are tracked as `chat_v2_hybrid`. Evaluate with
 `python scripts/evaluate_chat.py` (parser only) or `--live` (spends LLM quota).
 

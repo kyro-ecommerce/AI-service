@@ -155,6 +155,25 @@ def _target(plan: TurnPlan, catalog: dict[int, Product], position: int | None) -
     return catalog.get(shown[0]) if shown else None
 
 
+CHEAPER_RATIO = 0.85
+
+
+def _cheaper_than(state: ConversationState, references: list[int], catalog: dict[int, Product]) -> ConversationState:
+    """Business rule B3: "rẻ hơn cái 2" is cheaper than item 2; a bare "rẻ hơn"
+    caps the budget at 85 % of the average price of the items just shown."""
+    shown = [catalog[pid] for pid in state.last_shown_ids if pid in catalog and _price(catalog[pid])]
+    if not shown:
+        return state
+    if references and 1 <= references[0] <= len(state.last_shown_ids):
+        anchor = catalog.get(state.last_shown_ids[references[0] - 1])
+        cap = _price(anchor) - 1 if anchor and _price(anchor) else None
+    else:
+        cap = int(sum(_price(p) for p in shown) / len(shown) * CHEAPER_RATIO)
+    if not cap:
+        return state
+    return state.model_copy(update={"budget_max": cap, "budget_target": None})
+
+
 # ---------------------------------------------------------------- intent handlers
 def _search(plan: TurnPlan, catalog: list[Product], message: str, user_id: int, db, k: int) -> None:
     state = plan.state
@@ -179,7 +198,8 @@ def _search(plan: TurnPlan, catalog: list[Product], message: str, user_id: int, 
     ranked = chat_tools.rank_products(
         candidates, query_text=query_text,
         soft_preferences=[*state.soft_preferences, *([state.usage] if state.usage else [])],
-        profile=profile, popularity=popularity, popular_ids=popular_ids, k=k,
+        profile=profile, popularity=popularity, popular_ids=popular_ids,
+        budget_target=state.budget_target, preferred_brands=state.brands_preferred, k=k,
     )
     plan.products = [r.product for r in ranked]
     plan.reasons = {r.product.product_id: r.reasons for r in ranked}
@@ -276,7 +296,7 @@ _PRICE = re.compile(r"(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(triệu|tr\b|c�
 def _allowed_prices(plan: TurnPlan) -> set[int]:
     prices = {_price(p) for p in plan.products}
     # The customer's own budget figures may be repeated back.
-    prices |= {v for v in (plan.state.budget_min, plan.state.budget_max) if v}
+    prices |= {v for v in (plan.state.budget_min, plan.state.budget_max, plan.state.budget_target) if v}
     for rows in plan.matched_variants.values():
         for row in rows:
             prices |= {int(getattr(row, "price_vnd", 0) or 0), int(getattr(row, "sale_price_vnd", 0) or 0)}
@@ -407,9 +427,7 @@ async def prepare_turn(
     elif intent == "recommend":
         state = apply_update(state, interpretation.update)
         if interpretation.cheaper and state.last_shown_ids:
-            shown_prices = [_price(catalog[pid]) for pid in state.last_shown_ids if pid in catalog and _price(catalog[pid])]
-            if shown_prices:
-                state = state.model_copy(update={"budget_max": min(shown_prices) - 1})
+            state = _cheaper_than(state, interpretation.references, catalog)
         plan.state = state
         if not state.category and not state.has_hard_slots and not state.usage:
             plan.fallback = ASK_CATEGORY

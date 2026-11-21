@@ -76,9 +76,19 @@ def test_profile_normalises_affinities_and_records_purchases():
          row("user:6", 1, "PURCHASE")],
         "user:5", catalog, NOW,
     )
-    assert profile.categories["mouse"] == 1.0
-    assert 0 < profile.categories["laptop"] < 1.0
+    # The mouse was just bought (rule B5): its affinity is damped from 1.0 to 0.3
+    # and its complements (keyboard, monitor, headphone) are promoted.
+    assert profile.categories["mouse"] == 0.3
+    assert profile.categories["laptop"] == 0.5
+    assert profile.categories["keyboard"] == 0.6
+    assert profile.post_purchase_complements == {"keyboard", "monitor", "headphone"}
     assert profile.purchased == {2}
+
+
+def test_old_purchases_do_not_shift_the_profile():
+    catalog = {2: product(2, "mouse", "Logitech")}
+    profile = actor_profile([row("user:5", 2, "PURCHASE", days_ago=40)], "user:5", catalog, NOW)
+    assert profile.categories == {"mouse": 1.0} and not profile.post_purchase_complements
 
 
 def test_synthetic_rows_are_excluded_from_serving_signals():
