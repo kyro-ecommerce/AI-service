@@ -15,12 +15,11 @@ from app.schemas.chat import ChatResponse, RecommendedProductSummary, Recommende
 from app.schemas.search import SearchResult
 from app.services import llm_client, recommendation_tracking
 from app.services.search_service import search_products
-from app.services.consultation_core import filter_catalog
+from app.services.chat_tools import eligible_products
 from app.services.requirement_interpreter import interpret_requirements
 from app.services.catalog_variant import (
     VARIANT_SNAPSHOT_KEY,
     VariantEligibility,
-    evaluate_product_variants,
 )
 
 logger = logging.getLogger("ai-service.chat")
@@ -249,44 +248,16 @@ async def process_chat_consultation(
                         else "Mình đang gợi ý theo các điều kiện bạn đã nêu, chưa giới hạn ngân sách. "
                         "Bạn dự kiến chi tối đa bao nhiêu để mình thu hẹp lựa chọn?"
                     )
-            # Products declaring SKU snapshots must qualify through those SKUs,
-            # never through parent RAM or a cheaper, rejected SKU's price.
-            filter_products = [
-                p for p in active_products if VARIANT_SNAPSHOT_KEY not in (p.specs or {})
-            ]
-            decision = filter_catalog(requirements, filter_products)
-            catalog = {p.product_id: p for p in filter_products}
-            candidates = {pid: catalog[pid] for pid in decision.eligible_product_ids}
-            if not requirements.unresolved_questions:
-                for product in active_products:
-                    if VARIANT_SNAPSHOT_KEY not in (product.specs or {}):
-                        continue
-                    evaluations = evaluate_product_variants(
-                        requirements,
-                        product,
-                        policy="catalog_name_claims",
-                    )
-                    sku_checks.extend(evaluations)
-                    matches = [row for row in evaluations if row.eligible]
-                    if not matches:
-                        continue
-                    # One card per product. Its price pair comes from ONE
-                    # matching SKU; all matching configurations remain exposed.
-                    matches.sort(
-                        key=lambda row: (
-                            (row.sale_price_vnd if row.sale_price_vnd > 0 else row.price_vnd)
-                            or float("inf"),
-                            row.variant_id,
-                        )
-                    )
-                    matched_variants[product.product_id] = matches
-                    representative = matches[0]
-                    candidates[product.product_id] = product.model_copy(
-                        update={
-                            "original_price": representative.price_vnd,
-                            "discounted_price": representative.sale_price_vnd,
-                        }
-                    )
+            # Hard-constraint eligibility (catalog + per-SKU), shared with chat v2.
+            eligibility = eligible_products(
+                requirements,
+                active_products,
+                evaluate_skus=not requirements.unresolved_questions,
+            )
+            decision = eligibility.decision
+            candidates = eligibility.candidates
+            matched_variants = eligibility.matched_variants
+            sku_checks = eligibility.sku_checks
             if decision.status == "needs_clarification":
                 reply = "Mình cần làm rõ yêu cầu trước khi chọn sản phẩm:\n" + "\n".join(
                     requirements.unresolved_questions
