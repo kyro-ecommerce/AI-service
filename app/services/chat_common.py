@@ -83,7 +83,7 @@ def get_store_qa_response(normalized_msg: str) -> str | None:
         r"(?:(?:cho (?:minh|toi) hoi|shop oi|xin hoi) )?"
         r"(?:chinh sach )?(?P<topic>bao hanh|giao hang|doi tra|dia chi)"
         r"(?: cua (?:shop|cua hang|kyro|kyro store))?"
-        r"(?: (?:nhu the nao|ra sao|o dau|la gi|bao lau|may ngay|may thang))?"
+        r"(?: (?:nhu the nao|the nao|ra sao|o dau|la gi|bao lau|may ngay|may thang))?"
         r"(?: (?:a|nhi|vay))?",
         message,
     )
