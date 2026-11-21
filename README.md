@@ -84,6 +84,23 @@ trainer as a verified-data training pipeline. `scripts/simulate_interactions.py`
 `context_data.source = synthetic_simulator` and reported as synthetic).
 Embedding provenance integration and the Docker model-preload layer are unfinished.
 
+## Semantic search and product vectors
+
+`intfloat/multilingual-e5-small` (384 dims, pinned revision) encodes queries
+with `query: ` and products with `passage: `. Product text
+(`build_embedding_text`) holds name, type, brand, specs and a short
+description; prices, ratings and sales are excluded. Every stored vector has
+`embedding_metadata` (model, revision, text policy, content hash); unchanged
+products are not re-encoded, catalog upserts refresh changed ones, and an
+unconfigured encoder never wipes existing vectors. Products are never encoded
+inside a request.
+
+```powershell
+python scripts/build_embeddings.py          # dry run
+python scripts/build_embeddings.py --apply  # encode and store
+python scripts/evaluate_search.py --k 5     # keyword vs vector vs hybrid on 50 labelled queries
+```
+
 ## Baseline strategies (behaviour signals)
 
 Computed from `user_interactions` (simulator rows excluded unless

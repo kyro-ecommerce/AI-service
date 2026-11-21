@@ -55,7 +55,19 @@ def test_snapshot_rejects_changed_pagination_total(monkeypatch):
 
 def test_embedding_is_cleared_when_changed_content_cannot_be_embedded(monkeypatch):
     row = AIProduct(product_id=1, title="Legacy", content_text="Legacy", embedding=[1.0] * 384)
-    monkeypatch.setattr(product_repository, "generate_embedding", lambda _: (_ for _ in ()).throw(RuntimeError("offline")))
+    from app.services import product_embedding
+    from app.services.embedding_metadata import EncoderProfile
+    from app.services.embedding_service import EmbeddingUnavailableError
+
+    monkeypatch.setattr(
+        product_embedding, "configured_encoder_profile",
+        lambda: EncoderProfile("intfloat/multilingual-e5-small", "a" * 40, 384, True),
+    )
+
+    def offline(*_args, **_kwargs):
+        raise EmbeddingUnavailableError("offline")
+
+    monkeypatch.setattr(product_embedding, "embed_passage", offline)
     product_repository.apply_product_fields(row, product())
     assert row.embedding is None
     assert row.title == "Canonical laptop"
@@ -63,7 +75,9 @@ def test_embedding_is_cleared_when_changed_content_cannot_be_embedded(monkeypatc
 
 def test_reconciliation_can_explicitly_skip_embedding_without_loading_model(monkeypatch):
     row = AIProduct(product_id=1, content_text="Legacy", embedding=[1.0] * 384)
-    monkeypatch.setattr(product_repository, "generate_embedding", lambda _: pytest.fail("Model must not load"))
+    monkeypatch.setattr(
+        "app.services.product_embedding.embed_product", lambda *a, **k: pytest.fail("Model must not load")
+    )
     product_repository.apply_product_fields(row, product(), refresh_embedding=False)
     assert row.embedding is None
 

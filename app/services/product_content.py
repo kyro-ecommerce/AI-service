@@ -62,3 +62,44 @@ def build_content_text(product: Product) -> str:
     ]
 
     return " ".join(part for part in parts if part).strip()
+
+
+EMBEDDING_TEXT_POLICY_VERSION = "product-embedding-text-v1"
+_EMBEDDING_SPEC_LABELS = (
+    ("ram_capacity", "RAM"),
+    ("rom_capacity", "Bộ nhớ"),
+    ("screen_size", "Màn hình"),
+    ("battery_capacity", "Pin"),
+    ("connection_port", "Cổng kết nối"),
+    ("color", "Màu"),
+    ("weight", "Trọng lượng"),
+)
+_DESCRIPTION_LIMIT = 600
+
+
+def build_embedding_text(product: Product) -> str:
+    """Semantic text for product vectors.
+
+    Describes what the product is (name, type, brand, specs, short
+    description). Price, rating and sales are deliberately excluded: they
+    change often, are ranked by other signals and are not meaning.
+    """
+    from app.core.taxonomy import product_category
+
+    parts = [product.title.strip()]
+    category = product_category(product.category_name, product.title)
+    if category or product.category_name:
+        parts.append(f"Loại: {product.category_name or category}")
+    if product.brand and product.brand.strip():
+        parts.append(f"Thương hiệu: {product.brand.strip()}")
+    for field, label in _EMBEDDING_SPEC_LABELS:
+        value = getattr(product, field)
+        if value and str(value).strip():
+            parts.append(f"{label}: {str(value).strip()}")
+    tags = [t for t in (product.tags or []) if t and t.strip()]
+    if tags:
+        parts.append("Đặc điểm: " + ", ".join(sorted({t.strip() for t in tags})))
+    description = " ".join((product.description or "").split())
+    if description:
+        parts.append(description[:_DESCRIPTION_LIMIT])
+    return ". ".join(parts)

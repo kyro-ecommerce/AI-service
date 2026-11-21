@@ -10,7 +10,7 @@ from app.repositories.product_repository import (
 )
 from app.repositories.user_interaction_repository import record_user_interaction
 from app.schemas.search import SearchRequest, SearchResponse
-from app.services.embedding_service import generate_embedding
+from app.services.embedding_service import embed_query
 from app.services.search_service import extract_primary_category_intents, search_products
 
 router = APIRouter()
@@ -40,7 +40,7 @@ def _perform_search(
     db_vec_candidates = None
     if source == "database" and db is not None:
         try:
-            query_vector = generate_embedding(query)
+            query_vector = embed_query(query)
             db_raw_results = search_vector_products_db(db, query_vector=query_vector, limit=50)
             db_vec_candidates = [(to_product_schema(p), sim) for p, sim in db_raw_results]
         except Exception:

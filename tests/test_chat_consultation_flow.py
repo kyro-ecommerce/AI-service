@@ -50,7 +50,7 @@ def offline(monkeypatch):
     monkeypatch.setattr(service, "_load_chat_catalog_snapshot", loader)
     monkeypatch.setattr(service, "search_products", ranker)
     monkeypatch.setattr(service, "generate_llm_reply", gemini)
-    monkeypatch.setattr(search_service, "generate_embedding", embedding)
+    monkeypatch.setattr(search_service, "embed_query", embedding)
     monkeypatch.setattr("app.services.embedding_service.generate_embedding", embedding)
     monkeypatch.setattr(interpreter, "_request_interpretation", understanding)
     monkeypatch.setattr(

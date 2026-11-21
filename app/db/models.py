@@ -48,6 +48,8 @@ class AIProduct(Base):
     image_url: Mapped[str | None] = mapped_column(Text)
     content_text: Mapped[str | None] = mapped_column(Text)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384))
+    # Lineage of `embedding` (model, pinned revision, text policy, content hash).
+    embedding_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     source: Mapped[str | None] = mapped_column(Text, default="unknown", server_default="unknown")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     available_from: Mapped[datetime] = mapped_column(

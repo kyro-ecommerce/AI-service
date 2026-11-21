@@ -24,7 +24,7 @@ def product():
 def test_new_product_keeps_explicit_write_source(source, product):
     db = MagicMock()
     db.get.return_value = None
-    with patch("app.repositories.product_repository.generate_embedding", return_value=[]):
+    with patch("app.services.product_embedding.embed_product", return_value="failed"):
         assert upsert_product(db, product, source=source) == "created"
     assert db.add.call_args.args[0].source == source
 
@@ -32,7 +32,7 @@ def test_new_product_keeps_explicit_write_source(source, product):
 def test_unspecified_source_cannot_implicitly_claim_backend_origin(product):
     db = MagicMock()
     db.get.return_value = None
-    with patch("app.repositories.product_repository.generate_embedding", return_value=[]):
+    with patch("app.services.product_embedding.embed_product", return_value="failed"):
         upsert_product(db, product)
     assert db.add.call_args.args[0].source == "unknown"
 
@@ -59,7 +59,7 @@ def test_source_is_preserved_in_unique_id_race_recovery(product):
     existing = AIProduct(product_id=10, source="json-seed")
     db.get.side_effect = [None, existing]
     db.commit.side_effect = [IntegrityError("insert", {}, Exception("race")), None]
-    with patch("app.repositories.product_repository.generate_embedding", return_value=[]):
+    with patch("app.services.product_embedding.embed_product", return_value="failed"):
         assert upsert_product(db, product, source="json-seed") == "updated"
     assert existing.source == "json-seed"
     db.rollback.assert_called_once()
@@ -81,7 +81,7 @@ def test_race_recovery_rechecks_source_before_overwriting(product):
     existing = AIProduct(product_id=10, title="Backend title", source="catalog-service")
     db.get.side_effect = [None, existing]
     db.commit.side_effect = IntegrityError("insert", {}, Exception("race"))
-    with patch("app.repositories.product_repository.generate_embedding", return_value=[]):
+    with patch("app.services.product_embedding.embed_product", return_value="failed"):
         with pytest.raises(ProductSourceConflictError):
             upsert_product(db, product, source="json-seed")
     assert existing.title == "Backend title"
