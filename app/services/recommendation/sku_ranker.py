@@ -11,6 +11,9 @@ from app.services.recommendation.sku_projection import (
 )
 
 SIMILAR_SKU_POLICY_VERSION = "similar-sku-v2.1-explicit-target"
+# Same ranking with embedding cosine as the content signal (GĐ3); a separate
+# name lets online metrics compare it with the keyword-overlap fallback.
+SIMILAR_SKU_VECTOR_POLICY_VERSION = "similar-sku-v2.2-vector"
 
 
 def _evidence(row: SimilarSkuProjection) -> RecommendationVariantEvidence:
@@ -108,7 +111,11 @@ def rank_similar_snapshot(
         ))
     return RecommendationResponse(
         target_product_id=target.product_id, target_product_title=target.title,
-        strategy="capacity-first-v1-experimental" if ranking_policy == "capacity_first" else SIMILAR_SKU_POLICY_VERSION,
+        strategy=(
+            "capacity-first-v1-experimental" if ranking_policy == "capacity_first"
+            else SIMILAR_SKU_VECTOR_POLICY_VERSION if target.embedding
+            else SIMILAR_SKU_POLICY_VERSION
+        ),
         ranking_policy=ranking_policy, recommendations=items,
         comparison_basis="sku_snapshot", comparison_status=target_result.status,
         target_variant=_evidence(representative) if representative is not None else None,

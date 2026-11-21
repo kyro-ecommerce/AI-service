@@ -10,7 +10,6 @@ from app.core.product_source import (
     ProductWriteSource, guard_seed_source_collision, validate_product_write_source,
 )
 from app.schemas.product import Product, ProductSummary
-from app.services.embedding_service import generate_embedding
 from app.services.product_content import build_content_text, build_specs, build_tags
 
 logger = logging.getLogger("ai-service.repository")
@@ -264,16 +263,22 @@ def apply_product_fields(
     db_product.source = source
     db_product.is_active = product.is_active
 
-    if previous_content != db_product.content_text or not refresh_embedding:
-        db_product.embedding = None
     if not refresh_embedding:
+        # Callers that skip encoding must not keep a vector for different text.
+        if previous_content != db_product.content_text:
+            db_product.embedding = None
+            db_product.embedding_metadata = None
         return
 
-    try:
-        if db_product.content_text:
-            db_product.embedding = generate_embedding(db_product.content_text)
-    except Exception as exc:
-        logger.warning("Could not generate embedding for product %s: %s", product.product_id, exc)
+    from app.services.product_embedding import embed_product
+
+    # Re-encodes only when the semantic text or encoder profile changed;
+    # failures clear the vector instead of keeping a stale one.
+    if embed_product(db_product, product) == "unconfigured" and (
+        previous_content != db_product.content_text
+    ):
+        db_product.embedding = None
+        db_product.embedding_metadata = None
 
 
 def deactivate_product(

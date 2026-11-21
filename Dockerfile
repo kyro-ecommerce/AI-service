@@ -14,8 +14,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
-# Pre-download SentenceTransformer model into Docker image layer (prevents network download at runtime)
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+# Pre-download the pinned multilingual encoder into the image (no runtime download).
+ARG EMBEDDING_MODEL_NAME=intfloat/multilingual-e5-small
+ARG EMBEDDING_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
+RUN python -c "import sys; from sentence_transformers import SentenceTransformer; SentenceTransformer(sys.argv[1], revision=sys.argv[2], device='cpu')" "$EMBEDDING_MODEL_NAME" "$EMBEDDING_MODEL_REVISION"
 
 # Copy application code
 COPY . .

@@ -37,7 +37,7 @@ def test_no_session_cannot_serve_catalog_even_with_warm_cache(monkeypatch):
 def test_db_failure_never_reads_json_or_generates_embeddings(monkeypatch):
     monkeypatch.setattr(Path, "read_text", lambda *a, **k: pytest.fail("No JSON fallback"))
     monkeypatch.setattr(
-        repository, "generate_embedding", lambda *a: pytest.fail("No fallback vectors")
+        "app.services.product_embedding.embed_product", lambda *a, **k: pytest.fail("No fallback vectors")
     )
     with pytest.raises(repository.CatalogUnavailableError):
         repository.list_active_products_safe(broken_db())

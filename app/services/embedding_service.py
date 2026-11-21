@@ -228,3 +228,43 @@ def generate_embedding(text: str) -> list[float]:
             content_policy_version=RAW_TEXT_POLICY_VERSION,
         ).vector
     )
+
+
+# ---------------------------------------------------------------- query / passage roles
+# E5-family models are trained with role prefixes; omitting them degrades
+# retrieval. Other models are encoded without a prefix.
+QUERY_POLICY_VERSION = "query-role-prefix-v1"
+
+
+def role_prefix(profile: EncoderProfile, role: str) -> str:
+    if role not in {"query", "passage"}:
+        raise ValueError("role must be 'query' or 'passage'")
+    return f"{role}: " if "e5" in profile.model_name.lower() else ""
+
+
+def embed_query(text: str) -> list[float]:
+    """Vector for a user search query (role-prefixed for E5 models)."""
+    if not isinstance(text, str) or not text.strip():
+        raise EmbeddingInputError("Embedding input must be nonblank UTF-8 text")
+    profile = configured_encoder_profile()
+    return list(
+        generate_embedding_with_metadata(
+            role_prefix(profile, "query") + text.strip(),
+            content_policy_version=QUERY_POLICY_VERSION,
+        ).vector
+    )
+
+
+def embed_passage(text: str, *, content_policy_version: str) -> EmbeddingResult:
+    """Vector and lineage metadata for a stored document such as a product.
+
+    The metadata content hash covers the exact encoded text, prefix included,
+    so a change of model family or text policy is detectable as stale.
+    """
+    if not isinstance(text, str) or not text.strip():
+        raise EmbeddingInputError("Embedding input must be nonblank UTF-8 text")
+    profile = configured_encoder_profile()
+    return generate_embedding_with_metadata(
+        role_prefix(profile, "passage") + text.strip(),
+        content_policy_version=content_policy_version,
+    )

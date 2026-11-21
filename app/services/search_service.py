@@ -7,8 +7,8 @@ from typing import Any
 from app.core.taxonomy import detect_categories, fold, keywords_for
 from app.schemas.product import Product
 from app.schemas.search import SearchResult
-from app.services.embedding_service import generate_embedding
-from app.services.product_content import build_content_text, build_specs, build_tags
+from app.services.embedding_service import embed_query
+from app.services.product_content import build_specs, build_tags
 
 logger = logging.getLogger("ai-service.search")
 
@@ -176,7 +176,7 @@ def search_products(
     query_vector: list[float] = []
     if db_vec_candidates is None:
         try:
-            query_vector = generate_embedding(query)
+            query_vector = embed_query(query)
         except Exception as exc:
             logger.warning("Could not generate query embedding for query '%s': %s", query, exc)
 
@@ -221,12 +221,9 @@ def search_products(
     elif query_vector:
         vec_scored_products: list[tuple[float, Product]] = []
         for product in products:
+            # Only stored vectors: products are never encoded inside a request
+            # (scripts/build_embeddings.py and catalog upserts maintain them).
             emb = product.embedding
-            if not emb:
-                try:
-                    emb = generate_embedding(build_content_text(product))
-                except Exception:
-                    emb = None
             if emb:
                 sim = calculate_cosine_similarity(query_vector, emb)
                 if sim > 0.15:

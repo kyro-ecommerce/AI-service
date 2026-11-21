@@ -58,7 +58,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 # A real, independently verified HF commit is required before embedding use.
 # Empty revision intentionally disables encoding; never fall back to main/latest.
 EMBEDDING_MODEL_NAME = os.getenv(
-    "EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2"
+    "EMBEDDING_MODEL_NAME", "intfloat/multilingual-e5-small"
 )
 EMBEDDING_MODEL_REVISION = os.getenv("EMBEDDING_MODEL_REVISION", "")
 
