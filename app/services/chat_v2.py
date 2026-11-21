@@ -70,6 +70,7 @@ class TurnPlan:
     model_version: str | None = None
     source: str = "database"
     llm_task: str = ""              # instruction for this intent
+    positions: list[int] = field(default_factory=list)  # positions in the previous list (compare/question)
 
 
 # ---------------------------------------------------------------- helpers
@@ -102,11 +103,18 @@ def _spec_line(product: Product, variants: list | None) -> str:
 
 def _facts(plan: TurnPlan) -> str:
     lines = []
+    if plan.positions:
+        lines.append(
+            "Khách đang hỏi về sản phẩm ở vị trí "
+            + ", ".join(f"số {p}" for p in plan.positions)
+            + " trong danh sách vừa gợi ý (chỉ các sản phẩm này được liệt kê bên dưới):"
+        )
     for index, product in enumerate(plan.products, start=1):
         specs = _spec_line(product, plan.matched_variants.get(product.product_id))
         why = "; ".join(plan.reasons.get(product.product_id, []))
+        label = plan.positions[index - 1] if len(plan.positions) >= index else index
         lines.append(
-            f"{index}. [{product.title}](/product/{product.product_id}) | Hãng: {product.brand or 'chưa rõ'}"
+            f"{label}. [{product.title}](/product/{product.product_id}) | Hãng: {product.brand or 'chưa rõ'}"
             f" | Giá: {_fmt_money(_price(product))}" + (f" | {specs}" if specs else "")
             + (f" | Lý do khớp: {why}" if why else "")
         )
@@ -221,7 +229,9 @@ def _compare_or_question(plan: TurnPlan, catalog: dict[int, Product], message: s
         positions = refs if len(refs) >= 2 else list(range(1, min(len(shown), 2) + 1))
     else:
         positions = refs[:1] or [1]
-    products = [catalog[shown[p - 1]] for p in positions if 1 <= p <= len(shown) and shown[p - 1] in catalog]
+    valid = [p for p in positions if 1 <= p <= len(shown) and shown[p - 1] in catalog]
+    products = [catalog[shown[p - 1]] for p in valid]
+    plan.positions = valid
     if not products:
         plan.fallback = "Bạn đang hỏi về sản phẩm nào? Hãy tìm sản phẩm trước rồi hỏi tiếp nhé."
         return
@@ -230,7 +240,10 @@ def _compare_or_question(plan: TurnPlan, catalog: dict[int, Product], message: s
         plan.llm_task = "So sánh các sản phẩm theo dữ kiện (giá, cấu hình, hãng); nêu điểm khác biệt chính."
         plan.fallback = _list_answer(plan, "So sánh theo dữ kiện trong catalog:")
     else:
-        plan.llm_task = f"Trả lời câu hỏi của khách về sản phẩm, chỉ dựa trên dữ kiện: {redact_pii(message)}"
+        plan.llm_task = (
+            "Trả lời trực tiếp câu hỏi của khách về sản phẩm được hỏi, chỉ dựa trên dữ kiện; "
+            "nếu dữ kiện không có thông tin được hỏi thì nói rõ catalog chưa ghi nhận."
+        )
         plan.fallback = _list_answer(plan, "Thông tin trong catalog:") + (
             "\nThông số không có ở trên là catalog chưa ghi nhận."
         )
