@@ -147,6 +147,7 @@ def test_failed_catalog_is_an_error_not_an_empty_answer(monkeypatch):
 # ------------------------------------------------------------ store QA
 @pytest.mark.parametrize("query,topic", [
     ("chính sách bảo hành như thế nào?", "bảo hành"),
+    ("chính sách bảo hành thế nào", "bảo hành"),
     ("giao hàng mấy ngày?", "giao hàng"),
     ("Shop ơi đổi trả như thế nào?", "đổi trả"),
     ("địa chỉ của cửa hàng ở đâu?", "địa chỉ"),
