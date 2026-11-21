@@ -69,5 +69,5 @@ Tài liệu này tổng hợp chi tiết các đánh giá bảo mật, rủi ro 
 - [ ] **Bước 1**: Thêm `X-Internal-Token` middleware bảo vệ endpoint `/api/v1/ai/products/sync`.
 - [ ] **Bước 2**: Tích hợp `SlowAPI` để Rate Limit API `/chat` và `/chat/stream`.
 - [ ] **Bước 3**: Thêm hàm `sanitize_pii(text)` lọc Số điện thoại & Email trước khi gọi Gemini API.
-- [ ] **Bước 4**: Bọc Delimiter cho `user_message` trong `chat_service.py` để phòng chống Prompt Injection.
+- [ ] **Bước 4**: Bọc Delimiter cho tin nhắn khách trong `chat_v2.py` / `chat_nlu.py` để phòng chống Prompt Injection.
 - [ ] **Bước 5**: Thống nhất cấu hình `CORSMiddleware` với danh sách Domain được phép (`allow_origins`).

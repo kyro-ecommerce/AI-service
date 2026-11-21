@@ -1,7 +1,7 @@
 # AI catalog/SKU contract
 
 Status reviewed: 2026-11-11. Backend fields/APIs and its DB are unchanged.
-See [current status](current-status.md) for local runtime/FE changes and acceptance gates.
+See [architecture](ARCHITECTURE.md) and the [evaluation report](evaluation-report.md) for the current system.
 
 ## Identity and storage
 
@@ -52,7 +52,7 @@ backup and DB-write approval are separate operations. Do not restore old strict
 readers blindly after writing name_proposal metadata; preserve compatible snapshots.
 
 See [product contract](PRODUCT_DATA_CONTRACT.md) and
-[natural-language behavior](natural-language-consultation-v1.md).
+[natural-language behavior (archived)](archive/natural-language-consultation-v1.md).
 
 ## SKU-aware similar v1 (local implementation, 2026-11-05)
 
@@ -63,7 +63,7 @@ source tree. The local container was switched to it on 2026-11-07; Docker was
 unavailable at the start of the 2026-11-11 audit. Once the user started Docker,
 Phase 1B rechecked the mount/readiness and public product/trending endpoints;
 subsequent guest VIEW/SSE probes passed. Signed-in browser acceptance remains
-pending; see the status page rather than treating the initial audit as current.
+pending; see the evaluation report rather than treating the initial audit as current.
 Existing heuristic weights are retained, not tuned. Independent quality evaluation
 remains pending. A separate local FE change now displays selected SKU evidence;
 that is not proof of browser E2E behavior or preselection on the product page.
