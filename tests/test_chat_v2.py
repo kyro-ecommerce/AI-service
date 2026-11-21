@@ -206,3 +206,21 @@ def test_new_category_drops_type_specific_slots():
     state = apply_update(ConversationState(), StateUpdate(category="laptop", ram_min=16, budget_max=20_000_000))
     switched = apply_update(state, StateUpdate(category="phone"))
     assert switched.ram_min is None and switched.budget_max == 20_000_000
+
+
+def test_headphones_stored_as_accessories_still_match_the_category():
+    response = turn("tai nghe chống ồn")
+    assert ids(response) == [6]
+
+
+def test_reference_question_with_attribute_word_is_a_product_question():
+    first = turn("laptop dưới 20 triệu")
+    question = turn("cái thứ 2 màn hình bao nhiêu inch?", first.conversation_id)
+    assert question.intent == "product_question"
+    assert "laptop" in question.conditions and "monitor" not in question.conditions
+
+
+def test_budget_figures_from_the_customer_are_not_flagged():
+    plan = _plan([])
+    plan.state = ConversationState(budget_max=20_000_000)
+    assert chat_v2.sentence_ok("Chưa có mẫu nào dưới 20 triệu.", plan)

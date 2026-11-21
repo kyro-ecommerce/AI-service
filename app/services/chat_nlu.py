@@ -181,8 +181,12 @@ def parse_turn(
         intent = "accessories_for"
     elif _SIMILAR.search(folded) and refs:
         intent = "similar_to"
-    elif refs and not new_slots and not cheaper and _QUESTION.search(folded):
+    elif refs and not cheaper and _QUESTION.search(folded) and not (
+        update.budget_min or update.budget_max or update.brands_include or update.brands_exclude
+    ):
+        # "cái thứ 2 màn hình bao nhiêu inch?": "màn hình" is an attribute here.
         intent = "product_question"
+        update = StateUpdate()
     elif new_slots or cheaper or alternatives or state.has_hard_slots or state.usage:
         intent = "recommend"
     else:

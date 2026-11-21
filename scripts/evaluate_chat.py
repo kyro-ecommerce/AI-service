@@ -116,7 +116,7 @@ async def run(dialogues: list[dict], *, live: bool) -> dict:
                                          "got": getattr(plan.state, key), "expected": expected})
                 if plan.products and plan.interpretation.intent == "recommend":
                     eligible = chat_tools.eligible_products(plan.state.to_requirements(step["say"]),
-                                                            plan.products).candidates
+                                                            plan.products, title_category=True).candidates
                     totals["constraint"] += [p.product_id in eligible for p in plan.products]
                 totals["grounded"].append(all(chat_v2.sentence_ok(s, plan) for s in _sentences(reply)))
                 if "cards" in step:

@@ -4,7 +4,7 @@
   "dialogues": [
     {"id": "d01", "turns": [
       {"say": "laptop dưới 20 triệu", "intent": "recommend", "slots": {"category": "laptop", "budget_max": 20000000}, "cards": true},
-      {"say": "có con nào rẻ hơn không", "intent": "recommend", "slots": {"category": "laptop"}, "cards": true}
+      {"say": "có con nào rẻ hơn không", "intent": "recommend", "slots": {"category": "laptop"}, "cards": false, "note": "the cheapest shown laptop is the cheapest in the catalog"}
     ]},
     {"id": "d02", "turns": [
       {"say": "điện thoại từ 15 đến 25 triệu", "intent": "recommend", "slots": {"category": "phone", "budget_min": 15000000, "budget_max": 25000000}, "cards": true},

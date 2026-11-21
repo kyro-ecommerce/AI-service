@@ -41,11 +41,20 @@ class Eligibility:
     sku_checks: list[VariantEligibility] = field(default_factory=list)
 
 
+def _category_matches(product: Product, category: str) -> bool:
+    """Category stored on the product, or named by its title ("Tai nghe Sony ..."
+    stored under a generic "accessory" category still is a headphone)."""
+    from app.core.taxonomy import canonical_category, detect_categories
+
+    return canonical_category(product.category_name) == category or category in detect_categories(product.title)
+
+
 def eligible_products(
     requirements: ConsultationRequirements,
     products: Sequence[Product],
     *,
     evaluate_skus: bool = True,
+    title_category: bool = False,
 ) -> Eligibility:
     """Products satisfying every hard constraint.
 
@@ -54,6 +63,14 @@ def eligible_products(
     parent product or a rejected SKU). All matching SKUs stay exposed.
     """
     result = Eligibility()
+    if title_category:
+        categories = [c for c in requirements.constraints if c.field == "category" and c.operator == "eq"]
+        if categories:
+            wanted = str(categories[0].value)
+            products = [p for p in products if _category_matches(p, wanted)]
+            requirements = requirements.model_copy(update={
+                "constraints": [c for c in requirements.constraints if c not in categories],
+            })
     plain = [p for p in products if VARIANT_SNAPSHOT_KEY not in (p.specs or {})]
     result.decision = filter_catalog(requirements, plain)
     by_id = {p.product_id: p for p in plain}
