@@ -106,6 +106,51 @@ def _fake_get_recent_intents_in_new_session(user_id):
     return set()
 
 
+class _OfflineLLM:
+    """Stand-in for app.services.llm_client in the chat v2 path: no provider,
+    so no test can reach a real model even when .env holds an API key."""
+
+    @staticmethod
+    def configured_provider():
+        return None
+
+    @staticmethod
+    async def generate_json(*args, **kwargs):
+        raise AssertionError("tests must not call a real LLM")
+
+    @staticmethod
+    async def stream_text(*args, **kwargs):
+        raise AssertionError("tests must not call a real LLM")
+        yield ""  # pragma: no cover
+
+
+# In-memory conversation store: multi-turn chat tests run without PostgreSQL.
+FAKE_CONVERSATIONS: dict = {}
+
+
+def _fake_load_conversation(conversation_id, *, user_id, session_id, now=None):
+    from app.repositories.conversation_repository import LoadedConversation, new_conversation_id
+    from app.schemas.conversation import ConversationState
+
+    row = FAKE_CONVERSATIONS.get(conversation_id) if conversation_id else None
+    owned = row is not None and (
+        row["user_id"] == user_id if row["user_id"] else row["session_id"] == session_id
+    )
+    if not owned:
+        return LoadedConversation(new_conversation_id(), ConversationState())
+    return LoadedConversation(conversation_id, row["state"], list(row["history"][-6:]), is_new=False)
+
+
+def _fake_save_turn(conversation, state, *, user_id, session_id, user_text, assistant_text,
+                    intent, recommendation_id, now=None):
+    row = FAKE_CONVERSATIONS.setdefault(conversation.conversation_id, {
+        "user_id": user_id, "session_id": session_id, "history": [],
+    })
+    row["state"] = state
+    row["history"] += [("user", user_text), ("assistant", assistant_text)]
+    return True
+
+
 @pytest.fixture(scope="session", autouse=True)
 def mock_external_dependencies():
     """Keep the default test suite offline and independent of infrastructure."""
@@ -144,6 +189,12 @@ def mock_external_dependencies():
             ),
             # Served-list logging writes to PostgreSQL; keep the default suite offline.
             patch("app.services.recommendation_tracking.persist_served", return_value=True),
+            patch("app.repositories.conversation_repository.load_conversation", new=_fake_load_conversation),
+            patch("app.repositories.conversation_repository.save_turn", new=_fake_save_turn),
+            patch("app.services.chat_v2.llm_client", new=_OfflineLLM),
+            patch("app.services.chat_nlu.llm_client", new=_OfflineLLM),
+            # Single-turn interpreter: tests that need a provider patch it explicitly.
+            patch("app.services.requirement_interpreter._request_interpretation", return_value=None),
         ):
             yield
     finally:

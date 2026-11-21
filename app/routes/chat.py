@@ -8,7 +8,7 @@ from app.core.rate_limit import enforce_chat_rate_limit
 from app.core.privacy import redact_pii
 from app.schemas.chat import ChatFeedbackRequest, ChatFeedbackResponse, ChatRequest, ChatResponse
 from app.repositories.user_interaction_repository import record_chat_feedback
-from app.services.chat_service import process_chat_consultation, stream_chat_consultation
+from app.services.chat_v2 import process_turn, stream_turn
 
 router = APIRouter()
 
@@ -40,19 +40,15 @@ async def chat_consultation(
     identity: RequestIdentity = Depends(get_request_identity),
     _rate_limit: None = Depends(enforce_chat_rate_limit),
 ) -> ChatResponse:
-    """Smart AI Shopping Assistant Endpoint (RAG Chatbot).
-    
-    1. Retrieves relevant product context using RRF Hybrid Search.
-    2. Generates natural tech purchasing advice via Gemini LLM or Intelligent Fallback.
-    3. Returns response text and recommended product cards.
-    """
+    """Multi-turn shopping assistant (JSON). Send back ``conversation_id`` to continue."""
     http_client = getattr(request.app.state, "http_client", None)
-    return await process_chat_consultation(
-        message=chat_req.message,
-        limit=chat_req.limit,
-        db=db,
+    return await process_turn(
+        chat_req.message,
+        conversation_id=chat_req.conversation_id,
         user_id=identity.resolve(chat_req.user_id),
         session_id=chat_req.session_id,
+        db=db,
+        limit=chat_req.limit,
         http_client=http_client,
     )
 
@@ -65,17 +61,16 @@ async def chat_consultation_stream(
     identity: RequestIdentity = Depends(get_request_identity),
     _rate_limit: None = Depends(enforce_chat_rate_limit),
 ) -> StreamingResponse:
-    """Real-time SSE Streaming AI Shopping Assistant Endpoint.
-    
-    Streams response tokens chunks as text/event-stream.
-    """
+    """Multi-turn assistant over SSE: a metadata event (cards, conversation_id,
+    conditions) first, then verified answer chunks as the model produces them."""
     http_client = getattr(request.app.state, "http_client", None)
-    generator = stream_chat_consultation(
-        message=chat_req.message,
-        limit=chat_req.limit,
-        db=db,
+    generator = stream_turn(
+        chat_req.message,
+        conversation_id=chat_req.conversation_id,
         user_id=identity.resolve(chat_req.user_id),
         session_id=chat_req.session_id,
+        db=db,
+        limit=chat_req.limit,
         http_client=http_client,
     )
     return StreamingResponse(

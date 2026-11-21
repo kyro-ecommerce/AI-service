@@ -327,6 +327,7 @@ def test_real_endpoints_keep_json_and_sse_shapes_without_starting_lifespan(offli
         assert normal.status_code == streaming.status_code == 200
         assert set(normal.json()) == {
             "reply", "recommended_products", "source", "recommendation_id", "model_version",
+            "conversation_id", "conditions", "intent",
         }
         frames = [
             json.loads(line[6:])

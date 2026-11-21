@@ -9,6 +9,8 @@ class ChatRequest(BaseModel):
     limit: int = Field(default=6, ge=1, le=10, description="Max number of recommended products")
     user_id: int | None = Field(default=0, description="Optional user ID for personalized history")
     session_id: str | None = Field(default=None, max_length=128)
+    # Continue a multi-turn conversation; omitted or unknown starts a new one.
+    conversation_id: str | None = Field(default=None, max_length=64)
 
 
 class RecommendedVariantSummary(BaseModel):
@@ -62,6 +64,9 @@ class ChatResponse(BaseModel):
         default=None, description="Exposure id of recommended_products; echo it with events"
     )
     model_version: str | None = None
+    conversation_id: str | None = Field(default=None, description="Send back to continue this conversation")
+    conditions: list[str] = Field(default_factory=list, description="Active conditions as short chips")
+    intent: str | None = None
 
 
 class ChatFeedbackRequest(BaseModel):

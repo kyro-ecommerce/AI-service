@@ -172,3 +172,34 @@ class RecommendationServed(Base):
     served_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ChatConversation(Base):
+    """Multi-turn chat: owner and slot state (no raw prose)."""
+
+    __tablename__ = "chat_conversations"
+
+    conversation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ChatTurn(Base):
+    """One redacted message of a conversation."""
+
+    __tablename__ = "chat_turns"
+    __table_args__ = (CheckConstraint("role IN ('user', 'assistant')", name="ck_chat_turns_role"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("chat_conversations.conversation_id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    intent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recommendation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
