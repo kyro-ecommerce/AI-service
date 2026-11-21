@@ -84,6 +84,27 @@ trainer as a verified-data training pipeline. `scripts/simulate_interactions.py`
 `context_data.source = synthetic_simulator` and reported as synthetic).
 Embedding provenance integration and the Docker model-preload layer are unfinished.
 
+## Multi-turn chatbot (chat v2)
+
+`/chat` and `/chat/stream` keep a conversation (`conversation_id`, owner-checked,
+7-day retention in `chat_conversations`/`chat_turns`). Each turn:
+
+1. understand the message: deterministic parser (budget ranges, "tầm X củ",
+   RAM/storage, brands and exclusions, "cái thứ N", compare / similar /
+   accessories / question intents, soft preferences), optionally refined by an
+   LLM whose numbers, brands and categories must be grounded in the message;
+2. update slot state (`conditions` in the response are its chips);
+3. call the recommendation tools: hard-condition eligibility (catalog + SKU),
+   then ranking by semantic vectors, user profile, recent popularity and
+   soft-preference matches, with brand diversification; or similar /
+   accessories / compare / product facts;
+4. stream product cards first, then LLM prose sentence by sentence; sentences
+   with links or prices that do not match the cards are dropped, and a
+   deterministic answer is used when the LLM is unavailable.
+
+Lists are tracked as `chat_v2_hybrid`. Evaluate with
+`python scripts/evaluate_chat.py` (parser only) or `--live` (spends LLM quota).
+
 ## Semantic search and product vectors
 
 `intfloat/multilingual-e5-small` (384 dims, pinned revision) encodes queries
