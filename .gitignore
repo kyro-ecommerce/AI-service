@@ -26,3 +26,6 @@ data/synthetic/
 .idea/
 .vscode/
 *.swp
+
+# k6 summaries (kept locally, summarised in docs/evaluation-report.md)
+loadtest/k6/*.json
