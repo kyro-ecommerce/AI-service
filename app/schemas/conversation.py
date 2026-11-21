@@ -202,7 +202,7 @@ def apply_update(state: ConversationState, update: StateUpdate) -> ConversationS
             data[slot] = value
     if update.brands_include:
         data["brands_include"] = _merge(data["brands_include"], update.brands_include)
-        data["brands_preferred"] = _without(data["brands_preferred"], update.brands_include)
+        data["brands_preferred"] = []   # "chỉ Asus" supersedes softer brand wishes
         data["brands_exclude"] = _without(data["brands_exclude"], update.brands_include)
     if update.brands_preferred:
         data["brands_preferred"] = _merge(
