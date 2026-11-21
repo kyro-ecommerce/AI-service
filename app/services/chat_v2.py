@@ -133,6 +133,10 @@ def _facts(plan: TurnPlan) -> str:
         "\nƯu tiên của khách mà catalog CHƯA có dữ liệu xác nhận: " + ", ".join(unconfirmed)
         if unconfirmed else ""
     )
+    lines.append(
+        f"Danh sách có đúng {len(plan.products)} sản phẩm; nếu nêu số lượng thì phải là "
+        f"{len(plan.products)}."
+    )
     return f"Điều kiện hiện tại: {conditions}{note}\n" + "\n".join(lines)
 
 
@@ -291,6 +295,27 @@ def _compare_or_question(plan: TurnPlan, catalog: dict[int, Product], message: s
 
 # ---------------------------------------------------------------- answer verification
 _LINK = re.compile(r"/product/(\d+)")
+# "hai lựa chọn", "3 mẫu" (folded text). "một lựa chọn" is usually an article
+# ("là một lựa chọn tốt"), and "thứ 2" / "số 2" / "2 mẫu đầu" are positions,
+# so those are not counts.
+_COUNT_WORDS = {
+    # "tư"/"sáu" are left out: folded they read "tu"/"sau" ("từ sản phẩm", "sau mẫu này").
+    "hai": 2, "ba": 3, "bon": 4, "nam": 5, "bay": 7, "tam": 8, "chin": 9, "muoi": 10,
+}
+_COUNT = re.compile(
+    r"(?<!thu )(?<!so )\b(\d+|" + "|".join(_COUNT_WORDS) + r")\s+"
+    r"(?:lua chon|mau|san pham|goi y|phuong an|chiec|model|ung vien)\b(?!\s+(?:dau|tren|cuoi))"
+)
+
+
+def wrong_count(sentence: str, plan: TurnPlan) -> bool:
+    """The sentence states how many products there are, and the number differs
+    from the cards actually shown."""
+    for word in _COUNT.findall(fold(sentence)):
+        value = int(word) if word.isdigit() else _COUNT_WORDS[word]
+        if value != len(plan.products):
+            return True
+    return False
 _PRICE = re.compile(r"(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(triệu|tr\b|củ|vnđ|vnd|đồng|đ\b)", re.IGNORECASE)
 
 
@@ -358,9 +383,9 @@ def unsupported_claim(sentence: str, plan: TurnPlan) -> bool:
 
 
 def sentence_ok(sentence: str, plan: TurnPlan) -> bool:
-    """A sentence may only link shown products, quote their prices (1% tolerance)
-    and claim attributes the catalog facts support."""
-    if unsupported_claim(sentence, plan):
+    """A sentence may only link shown products, quote their prices (1% tolerance),
+    claim attributes the catalog facts support and state the shown card count."""
+    if unsupported_claim(sentence, plan) or wrong_count(sentence, plan):
         return False
     allowed_ids = {p.product_id for p in plan.products}
     if any(int(pid) not in allowed_ids for pid in _LINK.findall(sentence)):
