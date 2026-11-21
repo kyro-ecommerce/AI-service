@@ -17,7 +17,7 @@
     ]},
     {"id": "d04", "turns": [
       {"say": "laptop chơi game", "intent": "recommend", "slots": {"category": "laptop", "usage": "chơi game"}, "cards": true},
-      {"say": "tầm 40 củ thôi", "intent": "recommend", "slots": {"category": "laptop", "budget_max": 40000000}, "cards": true},
+      {"say": "tầm 40 củ thôi", "intent": "recommend", "slots": {"category": "laptop", "budget_target": 40000000, "budget_max": null}, "cards": true},
       {"say": "còn mẫu nào khác không", "intent": "recommend", "slots": {"category": "laptop"}}
     ]},
     {"id": "d05", "turns": [
@@ -25,7 +25,7 @@
       {"say": "giống cái thứ 1 nhưng rẻ hơn", "intent": "similar_to"}
     ]},
     {"id": "d06", "turns": [
-      {"say": "laptop Dell", "intent": "recommend", "slots": {"category": "laptop", "brands_include": ["Dell"]}, "cards": true},
+      {"say": "laptop Dell", "intent": "recommend", "slots": {"category": "laptop", "brands_preferred": ["Dell"], "brands_include": []}, "cards": true},
       {"say": "mua cái thứ 1 thì cần phụ kiện gì", "intent": "accessories_for"}
     ]},
     {"id": "d07", "turns": [
@@ -59,7 +59,7 @@
       {"say": "Anker thôi", "intent": "recommend", "slots": {"brands_include": ["Anker"]}, "cards": true}
     ]},
     {"id": "d15", "turns": [
-      {"say": "điện thoại Apple", "intent": "recommend", "slots": {"category": "phone", "brands_include": ["Apple"]}, "cards": true},
+      {"say": "điện thoại Apple", "intent": "recommend", "slots": {"category": "phone", "brands_preferred": ["Apple"], "brands_include": []}, "cards": true},
       {"say": "đổi sang laptop", "intent": "recommend", "slots": {"category": "laptop"}, "cards": true}
     ]},
     {"id": "d16", "turns": [

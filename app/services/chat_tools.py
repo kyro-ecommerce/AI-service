@@ -29,7 +29,12 @@ from app.services.consultation_core import filter_catalog
 logger = logging.getLogger("ai-service.chat-tools")
 
 CHAT_STRATEGY = "chat_v2_hybrid"
-SEARCH_WEIGHTS = {"semantic": 0.40, "profile": 0.25, "popularity": 0.20, "soft": 0.15}
+SEARCH_WEIGHTS = {
+    "semantic": 0.40, "profile": 0.25, "popularity": 0.20, "soft": 0.15,
+    # Business rules B1/B2: only present when the customer gave a target budget
+    # or a preferred brand; weights are renormalised over available signals.
+    "price_fit": 0.30, "brand": 0.30,
+}
 SAME_BRAND_PENALTY = 0.85
 
 
@@ -158,6 +163,8 @@ def rank_products(
     profile=None,
     popularity: dict[int, float] | None = None,
     popular_ids: set[int] | None = None,
+    budget_target: int | None = None,
+    preferred_brands: Sequence[str] = (),
     k: int = 4,
 ) -> list[RankedProduct]:
     """Weighted blend of available signals; missing signals are dropped and the
@@ -172,7 +179,10 @@ def rank_products(
         "profile": profile is not None and not profile.empty,
         "popularity": bool(pop),
         "soft": bool(soft) and any(soft.values()),
+        "price_fit": bool(budget_target),
+        "brand": bool(preferred_brands),
     }
+    wanted_brands = {b.casefold() for b in preferred_brands}
     total = sum(w for name, w in SEARCH_WEIGHTS.items() if available[name])
     weights = {
         name: (w / total if total else 0.0) for name, w in SEARCH_WEIGHTS.items() if available[name]
@@ -195,11 +205,20 @@ def rank_products(
             parts["popularity"] = pop.get(pid, 0.0)
         if "soft" in weights:
             parts["soft"] = soft.get(pid, 0.0)
+        if "price_fit" in weights:
+            price = _price(product)
+            parts["price_fit"] = max(0.0, 1 - abs(price - budget_target) / budget_target) if price else 0.0
+        if "brand" in weights:
+            parts["brand"] = 1.0 if (product.brand or "").casefold() in wanted_brands else 0.0
         score = sum(weights[name] * value for name, value in parts.items())
         # Reasons are claims shown to the customer: only absolute evidence.
         # (Semantic and popularity scores are relative, so the top item would
         # always look "matching"/"popular"; they rank but do not explain.)
         reasons = []
+        if parts.get("brand", 0) > 0:
+            reasons.append(f"đúng hãng {product.brand} bạn ưu tiên")
+        if parts.get("price_fit", 0) >= 0.9:
+            reasons.append("sát mức giá bạn nêu")
         if parts.get("soft", 0) > 0:
             reasons.append("khớp ưu tiên của bạn theo mô tả catalog")
         if parts.get("profile", 0) >= 0.5:

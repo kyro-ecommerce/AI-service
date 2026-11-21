@@ -32,6 +32,11 @@ TRENDING_HALF_LIFE_DAYS = 3.0
 PROFILE_WINDOW = timedelta(days=90)
 PROFILE_HALF_LIFE_DAYS = 14.0
 MIN_CO_PURCHASE_ORDERS = 2
+# Business rule B5: after a purchase, steer away from the category just bought
+# toward its complements for this long.
+POST_PURCHASE_WINDOW = timedelta(days=30)
+POST_PURCHASE_DAMPING = 0.3
+POST_PURCHASE_COMPLEMENT_AFFINITY = 0.6
 _GLOBAL_CACHE_SECONDS = 60.0
 
 
@@ -61,6 +66,8 @@ class ActorProfile:
     categories: dict[str, float] = field(default_factory=dict)
     brands: dict[str, float] = field(default_factory=dict)
     purchased: set[int] = field(default_factory=set)
+    # Categories boosted because they complement something bought recently.
+    post_purchase_complements: set[str] = field(default_factory=set)
 
     @property
     def empty(self) -> bool:
@@ -127,6 +134,7 @@ def actor_profile(
     categories: dict[str, float] = defaultdict(float)
     brands: dict[str, float] = defaultdict(float)
     purchased: set[int] = set()
+    recently_bought: set[str] = set()
     for row in rows:
         if row.actor != actor:
             continue
@@ -135,10 +143,12 @@ def actor_profile(
         age = now - _utc(row.occurred_at)
         if weight is None or product is None or age > window or age < timedelta(0):
             continue
+        category = product_category(product.category_name, product.title)
         if row.kind == "PURCHASE":
             purchased.add(row.product_id)
+            if category and age <= POST_PURCHASE_WINDOW:
+                recently_bought.add(category)
         w = weight * _decay(age, half_life_days)
-        category = product_category(product.category_name, product.title)
         if category:
             categories[category] += w
         if product.brand and product.brand.strip():
@@ -148,7 +158,19 @@ def actor_profile(
         top = max(values.values(), default=0.0)
         return {k: v / top for k, v in values.items()} if top > 0 else {}
 
-    return ActorProfile(normalise(categories), normalise(brands), purchased)
+    affinity = normalise(categories)
+    complements: set[str] = set()
+    if recently_bought:
+        from app.core.taxonomy import complements_of
+
+        for category in recently_bought:
+            if category in affinity:
+                affinity[category] *= POST_PURCHASE_DAMPING
+            for complement in complements_of(category):
+                if complement not in recently_bought:
+                    affinity[complement] = max(affinity.get(complement, 0.0), POST_PURCHASE_COMPLEMENT_AFFINITY)
+                    complements.add(complement)
+    return ActorProfile(affinity, normalise(brands), purchased, complements)
 
 
 def normalise_scores(scores: Mapping[int, float]) -> dict[int, float]:

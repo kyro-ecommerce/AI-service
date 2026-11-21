@@ -76,10 +76,18 @@ def test_references_compare_and_product_questions_use_last_shown():
 
 
 def test_cheaper_and_alternatives_follow_up():
+    # Rule B3: a bare "rẻ hơn" caps the budget at 85 % of the average shown price.
     first = turn("laptop RAM 16GB")
-    cheapest = min(p.original_price for p in first.recommended_products)
+    shown = [p.original_price for p in first.recommended_products]
+    cap = int(sum(shown) / len(shown) * 0.85)
     cheaper = turn("có con nào rẻ hơn không", first.conversation_id)
-    assert all(p.original_price < cheapest for p in cheaper.recommended_products)
+    assert cheaper.recommended_products
+    assert all(p.original_price <= cap for p in cheaper.recommended_products)
+
+    # "rẻ hơn cái N" is relative to that item.
+    second_price = first.recommended_products[1].original_price
+    relative = turn("rẻ hơn cái 2", first.conversation_id)
+    assert all(p.original_price < second_price for p in relative.recommended_products)
 
     base = turn("laptop dưới 20 triệu")
     other = turn("còn mẫu nào khác không", base.conversation_id)

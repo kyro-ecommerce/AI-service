@@ -134,6 +134,16 @@ def calculate_price_proximity(target: Product, candidate: Product) -> float:
     return min_p / max_p
 
 
+SIMILAR_PRICE_BAND = 0.30
+SIMILAR_PRICE_BAND_BONUS = 0.25
+
+
+def in_price_band(target: Product, candidate: Product, band: float = SIMILAR_PRICE_BAND) -> bool:
+    t = float(target.discounted_price or target.original_price or 0)
+    c = float(candidate.discounted_price or candidate.original_price or 0)
+    return t > 0 and c > 0 and abs(c - t) <= t * band
+
+
 def score_similar_candidate(target_product: Product, candidate: Product) -> tuple[float, str]:
     """Unrounded existing hybrid score; SKU aggregation must not rank rounded values."""
     target_vector = target_product.embedding
@@ -157,6 +167,9 @@ def score_similar_candidate(target_product: Product, candidate: Product) -> tupl
 
     brand_boost = 0.15 if cand_brand and cand_brand == target_brand else 0.0
     keyword_overlap = min(len(target_keywords.intersection(cand_keywords)) * 0.05, 0.15)
+    # Business rule B4: same price segment (within +/-30 %) ranks first; items
+    # outside the band can still appear when the band has too few products.
+    band_bonus = SIMILAR_PRICE_BAND_BONUS if in_price_band(target_product, candidate) else 0.0
 
     # Multi-Objective Composite Scoring: Vector Sim + Spec Sim + Price Segment + Brand Match
     total_score = (
@@ -165,6 +178,7 @@ def score_similar_candidate(target_product: Product, candidate: Product) -> tupl
         + (price_score * 0.15)
         + (brand_boost * 0.15)
         + keyword_overlap
+        + band_bonus
     )
 
     reason = "Gợi ý trong cùng nhóm sản phẩm; chưa đủ dữ liệu đối chiếu thông số"
@@ -500,7 +514,9 @@ def rerank_personalized_by_profile(
             + w["popularity"] * pop.get(product.product_id, 0.0)
             + _PRIOR_EPSILON * _catalog_prior_score(product)
         )
-        if cat_aff >= brand_aff and cat_aff > 0:
+        if category in profile.post_purchase_complements and cat_aff > 0:
+            reason = f"Phụ kiện {product.category_name or ''} dùng kèm sản phẩm bạn vừa mua".replace("  ", " ")
+        elif cat_aff >= brand_aff and cat_aff > 0:
             reason = f"Vì bạn quan tâm {product.category_name or 'dòng sản phẩm này'} gần đây"
         elif brand_aff > 0:
             reason = f"Thương hiệu {product.brand} bạn hay xem"

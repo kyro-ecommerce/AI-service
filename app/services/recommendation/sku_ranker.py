@@ -10,10 +10,10 @@ from app.services.recommendation.sku_projection import (
     SimilarSkuProjection, project_similar_skus, select_target_variant, capacity_proximity,
 )
 
-SIMILAR_SKU_POLICY_VERSION = "similar-sku-v2.1-explicit-target"
+SIMILAR_SKU_POLICY_VERSION = "similar-sku-v2.3-price-band"
 # Same ranking with embedding cosine as the content signal (GĐ3); a separate
 # name lets online metrics compare it with the keyword-overlap fallback.
-SIMILAR_SKU_VECTOR_POLICY_VERSION = "similar-sku-v2.2-vector"
+SIMILAR_SKU_VECTOR_POLICY_VERSION = "similar-sku-v2.3-vector-price-band"
 
 
 def _evidence(row: SimilarSkuProjection) -> RecommendationVariantEvidence:
