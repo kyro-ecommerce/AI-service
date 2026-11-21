@@ -137,7 +137,7 @@ def _target(plan: TurnPlan, catalog: dict[int, Product], position: int | None) -
 def _search(plan: TurnPlan, catalog: list[Product], message: str, user_id: int, db, k: int) -> None:
     state = plan.state
     excluded = set(state.last_shown_ids) if plan.interpretation.wants_alternatives else set()
-    eligibility = chat_tools.eligible_products(state.to_requirements(message), catalog)
+    eligibility = chat_tools.eligible_products(state.to_requirements(message), catalog, title_category=True)
     candidates = [p for pid, p in eligibility.candidates.items() if pid not in excluded]
     if not candidates:
         conditions = ", ".join(state.chips())
@@ -243,6 +243,8 @@ _PRICE = re.compile(r"(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(triá»‡u|tr\b|cá
 
 def _allowed_prices(plan: TurnPlan) -> set[int]:
     prices = {_price(p) for p in plan.products}
+    # The customer's own budget figures may be repeated back.
+    prices |= {v for v in (plan.state.budget_min, plan.state.budget_max) if v}
     for rows in plan.matched_variants.values():
         for row in rows:
             prices |= {int(getattr(row, "price_vnd", 0) or 0), int(getattr(row, "sale_price_vnd", 0) or 0)}
