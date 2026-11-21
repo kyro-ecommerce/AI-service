@@ -32,7 +32,7 @@ from app.schemas.product import Product
 from app.services import chat_tools, llm_client, recommendation_tracking
 from app.services.chat_nlu import interpret_turn
 # Module reference (not names) so the catalog loader can be swapped at runtime/tests.
-from app.services import chat_service as single_turn
+from app.services import chat_common
 
 logger = logging.getLogger("ai-service.chat-v2")
 
@@ -406,7 +406,7 @@ async def prepare_turn(
         asyncio.to_thread(
             conversations.load_conversation, conversation_id, user_id=user_id, session_id=session_id
         ),
-        asyncio.to_thread(single_turn._load_chat_catalog_snapshot),
+        asyncio.to_thread(chat_common._load_chat_catalog_snapshot),
     )
     catalog = {p.product_id: p for p in catalog_list}
     interpretation = await interpret_turn(
@@ -422,9 +422,9 @@ async def prepare_turn(
         plan.state = ConversationState()
         plan.fallback = "Mình đã xóa các điều kiện cũ. " + ASK_CATEGORY
     elif intent == "greeting":
-        plan.fallback = single_turn.GREETING_REPLY
+        plan.fallback = chat_common.GREETING_REPLY
     elif intent == "policy":
-        plan.fallback = single_turn.get_store_qa_response(" ".join(fold(message).split())) or OFF_TOPIC
+        plan.fallback = chat_common.get_store_qa_response(" ".join(fold(message).split())) or OFF_TOPIC
     elif intent == "recommend":
         state = apply_update(state, interpretation.update)
         if interpretation.cheaper and state.last_shown_ids:
@@ -501,7 +501,7 @@ async def answer_chunks(
     """Verified LLM prose when there are facts and a provider; otherwise the fallback."""
     produced = False
     if plan.facts and llm_client.configured_provider() is not None:
-        system = SYSTEM_PROMPT + single_turn.CATALOG_FACTS_POLICY + "NHIỆM VỤ: " + plan.llm_task + "\nDỮ KIỆN:\n" + plan.facts
+        system = SYSTEM_PROMPT + chat_common.CATALOG_FACTS_POLICY + "NHIỆM VỤ: " + plan.llm_task + "\nDỮ KIỆN:\n" + plan.facts
         try:
             stream = llm_client.stream_text(
                 system, "Tin nhắn của khách: " + redact_pii(message), http_client=http_client

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from app.schemas.conversation import ConversationState
 from app.schemas.product import Product
-from app.services import chat_service, chat_v2
+from app.services import chat_common, chat_v2
 from app.services.catalog_quality import price_outliers, recommendable
 from app.services.chat_nlu import parse_turn
 from app.services.recommendation import signals
@@ -74,7 +74,7 @@ def test_generic_accessory_category_is_split_by_title_and_small_groups_skipped()
 
 def test_suspect_price_is_not_recommended_in_chat(monkeypatch):
     FAKE_CONVERSATIONS.clear()
-    monkeypatch.setattr(chat_service, "_load_chat_catalog_snapshot", lambda: (LAPTOPS, "database"))
+    monkeypatch.setattr(chat_common, "_load_chat_catalog_snapshot", lambda: (LAPTOPS, "database"))
     response = asyncio.run(chat_v2.process_turn(
         "laptop dưới 20 triệu", conversation_id=None, user_id=0, session_id="s-a2", limit=4,
     ))

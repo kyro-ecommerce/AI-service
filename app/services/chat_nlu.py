@@ -153,7 +153,7 @@ def references(folded: str, shown: int) -> list[int]:
 def parse_turn(
     message: str, state: ConversationState, *, catalog_brands: set[str] = frozenset()
 ) -> TurnInterpretation:
-    from app.services.chat_service import get_store_qa_response, is_pure_greeting
+    from app.services.chat_common import get_store_qa_response, is_pure_greeting
 
     folded = " ".join(fold(message).split())
     update = StateUpdate()

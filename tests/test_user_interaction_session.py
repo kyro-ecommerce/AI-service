@@ -2,10 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from app.repositories.user_interaction_repository import record_user_interaction_in_new_session
-from app.services.chat_service import (
-    _get_recent_intents_in_new_session,
-    _load_chat_catalog_snapshot,
-)
+from app.services.chat_common import _load_chat_catalog_snapshot
 
 
 class UserInteractionSessionTest(unittest.TestCase):
@@ -48,14 +45,12 @@ class UserInteractionSessionTest(unittest.TestCase):
             model_version=None,
         )
 
-    @patch("app.services.chat_service.search_products", return_value=[])
-    @patch("app.services.chat_service.list_active_products_safe", return_value=([], "database"))
-    @patch("app.services.chat_service.SessionLocal")
+    @patch("app.services.chat_common.list_active_products_safe", return_value=([], "database"))
+    @patch("app.services.chat_common.SessionLocal")
     def test_retrieval_worker_owns_database_session(
         self,
         mock_session_factory: MagicMock,
         mock_list: MagicMock,
-        mock_search: MagicMock,
     ) -> None:
         worker_session = mock_session_factory.return_value.__enter__.return_value
 
@@ -63,23 +58,7 @@ class UserInteractionSessionTest(unittest.TestCase):
 
         mock_list.assert_called_once_with(worker_session)
         self.assertEqual((products, source), ([], "database"))
-        mock_search.assert_not_called()
         mock_session_factory.return_value.__exit__.assert_called_once()
-
-    @patch("app.repositories.user_interaction_repository.get_user_recent_intents")
-    @patch("app.services.chat_service.SessionLocal")
-    def test_personalization_worker_owns_database_session(
-        self,
-        mock_session_factory: MagicMock,
-        mock_get_intents: MagicMock,
-    ) -> None:
-        worker_session = mock_session_factory.return_value.__enter__.return_value
-        mock_get_intents.return_value = {"laptop"}
-
-        result = _get_recent_intents_in_new_session(42)
-
-        self.assertEqual(result, {"laptop"})
-        mock_get_intents.assert_called_once_with(worker_session, 42)
 
 
 if __name__ == "__main__":
