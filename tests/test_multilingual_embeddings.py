@@ -204,3 +204,15 @@ def test_similar_strategy_names_the_vector_signal():
     from app.services.recommendation import sku_ranker
 
     assert sku_ranker.SIMILAR_SKU_VECTOR_POLICY_VERSION != sku_ranker.SIMILAR_SKU_POLICY_VERSION
+
+
+def test_vietnamese_titles_match_canonical_category_intents():
+    """Regression: 'tai nghe' query must not penalise 'Tai nghe Sony' stored as accessory."""
+    from app.services.search_service import matches_category_intent, search_products
+
+    headphone = Product(product_id=10, title="Tai nghe Sony WH-1000XM5", category_name="accessory", brand="Sony")
+    laptop_item = Product(product_id=4, title="Laptop Acer Nitro 5", category_name="laptop")
+    assert matches_category_intent(headphone, {"headphone"})
+    assert not matches_category_intent(laptop_item, {"headphone"})
+    results = search_products([headphone, laptop_item], "tai nghe chống ồn", limit=3, db_vec_candidates=[])
+    assert [r.product_id for r in results][:1] == [10]

@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 
-from app.core.taxonomy import detect_categories, fold, keywords_for
+from app.core.taxonomy import detect_categories, fold, keywords_for, product_category
 from app.schemas.product import Product
 from app.schemas.search import SearchResult
 from app.services.embedding_service import embed_query
@@ -74,6 +74,19 @@ def extract_budget_constraint(raw_query: str) -> float | None:
     return None
 
 
+def matches_category_intent(product: Product, intents: set[str]) -> bool:
+    """Whether the product belongs to one of the requested canonical categories.
+
+    Intents are canonical keys ("headphone"); catalog titles are Vietnamese
+    ("Tai nghe Sony ...") and generic items are stored as "accessory", so match
+    the product's canonical category or any taxonomy keyword of the intent.
+    """
+    if product_category(product.category_name, product.title) in intents:
+        return True
+    text = normalize_parts([product.category_name or "", product.title, *build_tags(product)])
+    return any(keyword in text for keyword in keywords_for(intents))
+
+
 def calculate_keyword_score(
     product: Product,
     query_tokens: list[str],
@@ -100,7 +113,7 @@ def calculate_keyword_score(
 
     # 1. Multi-Category Intent Enforcement
     if primary_intents:
-        if norm_cat in primary_intents or any(intent in norm_title or intent in norm_tags for intent in primary_intents):
+        if matches_category_intent(product, primary_intents):
             score += 35.0
         else:
             score -= 50.0
@@ -255,10 +268,7 @@ def search_products(
 
         # Apply Multi-Category Intent Guardrails
         if primary_intents:
-            norm_cat = normalize_parts([product.category_name or ""])
-            norm_title = normalize_parts([product.title])
-            norm_tags = normalize_parts(build_tags(product))
-            if norm_cat in primary_intents or any(intent in norm_title or intent in norm_tags for intent in primary_intents):
+            if matches_category_intent(product, primary_intents):
                 rrf_score *= 1.3
             else:
                 rrf_score *= 0.3
