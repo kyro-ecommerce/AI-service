@@ -44,7 +44,32 @@ def find_product_by_id(products: list[Product], product_id: int) -> Product | No
     return None
 
 
+_last_fingerprint: tuple[list[Product], str] | None = None
+
+
 def _catalog_fingerprint(products: list[Product]) -> str:
+    """Hash of the catalog snapshot.
+
+    The JSON+SHA-256 over every product (~5 ms) was the largest per-request
+    CPU cost under load. It is memoised only for the repository's own DB
+    snapshot, which is replaced (never edited) when it expires; any other list
+    is hashed in full, so in-place edits are always seen.
+    """
+    global _last_fingerprint
+    from app.repositories import product_repository
+
+    snapshot = product_repository._products_cache
+    if snapshot is None or products is not snapshot[0]:
+        return _compute_fingerprint(products)
+    cached = _last_fingerprint
+    if cached is not None and cached[0] is products:
+        return cached[1]
+    value = _compute_fingerprint(products)
+    _last_fingerprint = (products, value)
+    return value
+
+
+def _compute_fingerprint(products: list[Product]) -> str:
     # Snapshot changes invalidate results; this cannot refresh the source DB cache.
     snapshot = json.dumps(
         [p.model_dump(mode="json") for p in sorted(products, key=lambda p: p.product_id)],
