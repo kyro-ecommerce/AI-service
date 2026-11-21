@@ -1,10 +1,16 @@
-// k6 load test for the AI service, through the API gateway (anonymous traffic).
+// k6 load test for the AI service (anonymous, read-only traffic).
 //
-//   docker run --rm -i -v "${PWD}/loadtest/k6:/scripts" grafana/k6:0.54.0 run \
-//     -e BASE_URL=http://host.docker.internal:8080 /scripts/ai_service.js
+//   docker run --rm -v "D:/Kyro/ai-service/loadtest/k6:/scripts" grafana/k6:0.54.0 run \
+//     -e BASE_URL=http://host.docker.internal:8000 /scripts/ai_service.js
 //
-// Read-only by default: recommendations and search. It writes no interaction
-// rows and spends no LLM quota. CHAT=1 adds a low-rate chat scenario (parser
+// Recommendations and search only: no interaction rows, no LLM quota. Every
+// served list is still logged in recommendation_served with session_id
+// "k6-<vu>"; remove them afterwards with
+//   DELETE FROM recommendation_served WHERE session_id LIKE 'k6-%';
+// Through the gateway, one client IP is limited to 10 req/s (burst 20), so
+// measure service capacity against the AI service port directly. Search sends
+// no session_id (with one it would log a SEARCH interaction).
+// CHAT=1 adds a low-rate chat scenario (parser
 // path; set it only when no LLM key is configured or quota does not matter;
 // the per-client chat rate limit is 20 requests/minute).
 import http from "k6/http";
@@ -57,15 +63,15 @@ const pick = (items) => items[Math.floor(Math.random() * items.length)];
 const sessionId = () => `k6-${__VU}`;
 
 export function browse() {
-  const headers = { "X-Session-Id": sessionId() };
+  const sid = `session_id=${sessionId()}`;
   const pid = pick(PRODUCT_IDS);
   const calls = [
-    `${BASE}/recommendations/trending?limit=8`,
-    `${BASE}/recommendations/similar/${pid}?limit=6`,
-    `${BASE}/recommendations/accessories/${pid}?limit=6`,
+    ["/recommendations/trending", `${BASE}/recommendations/trending?limit=8&${sid}`],
+    ["/recommendations/similar/:id", `${BASE}/recommendations/similar/${pid}?limit=6&${sid}`],
+    ["/recommendations/accessories/:id", `${BASE}/recommendations/accessories/${pid}?limit=6&${sid}`],
   ];
-  for (const url of calls) {
-    const res = http.get(url, { headers, tags: { name: url.replace(/\/\d+(\?|$)/, "/:id$1").split("?")[0] } });
+  for (const [name, url] of calls) {
+    const res = http.get(url, { tags: { name } });
     recLatency.add(res.timings.duration);
     check(res, { "rec 200": (r) => r.status === 200 });
   }
