@@ -1,0 +1,84 @@
+{
+  "version": "chat-dialogues-vi-v1",
+  "catalog_note": "Written for the 22 active products (2026-11-21). 'slots' lists expected state after the turn (subset); 'cards' true means at least one product is expected.",
+  "dialogues": [
+    {"id": "d01", "turns": [
+      {"say": "laptop dưới 20 triệu", "intent": "recommend", "slots": {"category": "laptop", "budget_max": 20000000}, "cards": true},
+      {"say": "có con nào rẻ hơn không", "intent": "recommend", "slots": {"category": "laptop"}, "cards": true}
+    ]},
+    {"id": "d02", "turns": [
+      {"say": "điện thoại từ 15 đến 25 triệu", "intent": "recommend", "slots": {"category": "phone", "budget_min": 15000000, "budget_max": 25000000}, "cards": true},
+      {"say": "không lấy Xiaomi", "intent": "recommend", "slots": {"category": "phone", "brands_exclude": ["Xiaomi"]}, "cards": true},
+      {"say": "so sánh cái 1 và cái 2", "intent": "compare", "cards": true}
+    ]},
+    {"id": "d03", "turns": [
+      {"say": "tai nghe chống ồn", "intent": "recommend", "slots": {"category": "headphone", "soft_preferences": ["chống ồn"]}, "cards": true},
+      {"say": "cái thứ 1 giá bao nhiêu?", "intent": "product_question", "cards": true}
+    ]},
+    {"id": "d04", "turns": [
+      {"say": "laptop chơi game", "intent": "recommend", "slots": {"category": "laptop", "usage": "chơi game"}, "cards": true},
+      {"say": "tầm 40 củ thôi", "intent": "recommend", "slots": {"category": "laptop", "budget_max": 40000000}, "cards": true},
+      {"say": "còn mẫu nào khác không", "intent": "recommend", "slots": {"category": "laptop"}}
+    ]},
+    {"id": "d05", "turns": [
+      {"say": "máy tính bảng", "intent": "recommend", "slots": {"category": "tablet"}, "cards": true},
+      {"say": "giống cái thứ 1 nhưng rẻ hơn", "intent": "similar_to"}
+    ]},
+    {"id": "d06", "turns": [
+      {"say": "laptop Dell", "intent": "recommend", "slots": {"category": "laptop", "brands_include": ["Dell"]}, "cards": true},
+      {"say": "mua cái thứ 1 thì cần phụ kiện gì", "intent": "accessories_for"}
+    ]},
+    {"id": "d07", "turns": [
+      {"say": "xin chào", "intent": "greeting", "cards": false},
+      {"say": "chính sách bảo hành như thế nào?", "intent": "policy", "cards": false},
+      {"say": "1+1 bằng mấy", "intent": "chitchat", "cards": false}
+    ]},
+    {"id": "d08", "turns": [
+      {"say": "laptop dưới 25 triệu", "intent": "recommend", "slots": {"category": "laptop", "budget_max": 25000000}, "cards": true},
+      {"say": "bắt đầu lại", "intent": "reset", "slots": {"category": null, "budget_max": null}, "cards": false},
+      {"say": "chuột không dây", "intent": "recommend", "slots": {"category": "mouse"}, "cards": true}
+    ]},
+    {"id": "d09", "turns": [
+      {"say": "dien thoai duoi 21 trieu", "intent": "recommend", "slots": {"category": "phone", "budget_max": 21000000}, "cards": true}
+    ]},
+    {"id": "d10", "turns": [
+      {"say": "laptop lập trình pin trâu màn đẹp", "intent": "recommend", "slots": {"category": "laptop", "usage": "lập trình", "soft_preferences": ["pin trâu", "màn hình đẹp"]}, "cards": true}
+    ]},
+    {"id": "d11", "turns": [
+      {"say": "laptop dưới 2 triệu", "intent": "recommend", "slots": {"category": "laptop", "budget_max": 2000000}, "cards": false}
+    ]},
+    {"id": "d12", "turns": [
+      {"say": "màn hình chơi game", "intent": "recommend", "slots": {"category": "monitor", "usage": "chơi game"}, "cards": true}
+    ]},
+    {"id": "d13", "turns": [
+      {"say": "bàn phím cơ", "intent": "recommend", "slots": {"category": "keyboard"}, "cards": true},
+      {"say": "có loại nào rẻ hơn không", "intent": "recommend", "slots": {"category": "keyboard"}}
+    ]},
+    {"id": "d14", "turns": [
+      {"say": "sạc dự phòng", "intent": "recommend", "slots": {"category": "accessory"}, "cards": true},
+      {"say": "Anker thôi", "intent": "recommend", "slots": {"brands_include": ["Anker"]}, "cards": true}
+    ]},
+    {"id": "d15", "turns": [
+      {"say": "điện thoại Apple", "intent": "recommend", "slots": {"category": "phone", "brands_include": ["Apple"]}, "cards": true},
+      {"say": "đổi sang laptop", "intent": "recommend", "slots": {"category": "laptop"}, "cards": true}
+    ]},
+    {"id": "d16", "turns": [
+      {"say": "laptop trên 40 triệu", "intent": "recommend", "slots": {"category": "laptop", "budget_min": 40000000}, "cards": true},
+      {"say": "cái thứ 2 màn hình bao nhiêu inch?", "intent": "product_question", "cards": true}
+    ]},
+    {"id": "d17", "turns": [
+      {"say": "tư vấn cho mình laptop văn phòng mỏng nhẹ", "intent": "recommend", "slots": {"category": "laptop", "usage": "văn phòng", "soft_preferences": ["mỏng nhẹ"]}, "cards": true}
+    ]},
+    {"id": "d18", "turns": [
+      {"say": "điện thoại", "intent": "recommend", "slots": {"category": "phone"}, "cards": true},
+      {"say": "dưới 19 triệu", "intent": "recommend", "slots": {"category": "phone", "budget_max": 19000000}, "cards": true}
+    ]},
+    {"id": "d19", "turns": [
+      {"say": "mình cần mua đồ", "intent": "chitchat", "cards": false},
+      {"say": "laptop", "intent": "recommend", "slots": {"category": "laptop"}, "cards": true}
+    ]},
+    {"id": "d20", "turns": [
+      {"say": "laptop đừng Asus đừng Apple", "intent": "recommend", "slots": {"category": "laptop", "brands_exclude": ["Apple", "Asus"]}, "cards": true}
+    ]}
+  ]
+}
