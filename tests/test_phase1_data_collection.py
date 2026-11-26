@@ -35,7 +35,7 @@ ORDER = {
 
 # ------------------------------------------------------------ order.created
 @patch("app.services.event_consumer.SessionLocal")
-def test_order_created_records_one_purchase_per_line_with_broker_time(session):
+def test_order_created_records_marker_without_purchase(session):
     db = session.return_value.__enter__.return_value
     db.get.side_effect = lambda model, key: (
         None
@@ -45,18 +45,10 @@ def test_order_created_records_one_purchase_per_line_with_broker_time(session):
     db.scalars.return_value.first.return_value = None
     PROCESSED_EVENTS.clear()
 
-    assert process_event_payload(dict(ORDER), routing_key="order.created") == "order_purchase_recorded"
+    assert process_event_payload(dict(ORDER), routing_key="order.created") == "order_created_recorded"
 
     rows = [c.args[0] for c in db.add.call_args_list if type(c.args[0]).__name__ == "UserInteraction"]
-    assert [(r.user_id, r.product_id, r.interaction_type) for r in rows] == [
-        (42, 10, "PURCHASE"),
-        (42, 11, "PURCHASE"),
-    ]
-    assert {r.occurred_at_source for r in rows} == {"broker_received"}
-    assert [r.event_id for r in rows] == ["order-created:501:10:3", "order-created:501:11:0"]
-    assert rows[0].category_intents == ["laptop"]
-    stored = repr([(r.query_text, r.context_data) for r in rows])
-    assert "buyer@example.com" not in stored and "15000000" not in stored
+    assert rows == []
     processed = [c.args[0] for c in db.add.call_args_list if type(c.args[0]).__name__ == "ProcessedEvent"]
     assert processed[0].event_id == "order-created:501"
     db.commit.assert_called_once()

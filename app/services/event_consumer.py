@@ -12,9 +12,8 @@ from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import ORDER_EXCHANGE, RABBITMQ_EXCHANGE, RABBITMQ_QUEUE, RABBITMQ_URL
-from app.core.taxonomy import product_category
 from app.core.product_source import ProductSourceConflictError
-from app.db.models import AIProduct, ProcessedEvent, UserInteraction
+from app.db.models import ProcessedEvent, UserInteraction
 from app.db.session import SessionLocal
 from app.repositories.product_repository import deactivate_product, upsert_product
 from app.repositories.user_interaction_repository import record_user_interaction
@@ -60,48 +59,14 @@ class BoundedEventTracker:
 PROCESSED_EVENTS = BoundedEventTracker(max_size=5000)
 ORDER_CREATED_ROUTING_KEY = "order.created"
 ORDER_CANCELLED_ROUTING_KEY = "order.cancelled"
-ORDER_ROUTING_KEYS = (ORDER_CREATED_ROUTING_KEY, ORDER_CANCELLED_ROUTING_KEY)
-CATALOG_ROUTING_KEYS = ("product.created", "product.updated", "product.deleted")
+ORDER_ROUTING_KEYS = (ORDER_CREATED_ROUTING_KEY, ORDER_CANCELLED_ROUTING_KEY, "order.delivered")
+CATALOG_ROUTING_KEYS = ("product.created", "product.updated", "product.deleted", "stock.changed")
 CLICKSTREAM_ROUTING_KEYS = (
     "user.product.impression",
     "user.product.clicked",
     "user.product.viewed",
     "user.cart.added",
-    "user.order.completed",
 )
-
-
-def record_order_created(db, order: OrderCreatedEvent, routing_key: str) -> int:
-    """One PURCHASE row per order line, timed by live broker receipt.
-
-    The backend event has no event id or timestamp; ids are derived from the
-    order id so redelivery is idempotent. Emails and prices are not stored.
-    """
-    recorded = 0
-    for item in order.items:
-        product = db.get(AIProduct, item.productId)
-        category = product_category(product.category_name, product.title) if product else None
-        variant = item.variantId or 0
-        recorded += record_user_interaction(
-            db=db,
-            user_id=order.userId,
-            interaction_type="PURCHASE",
-            query_text=f"Order {order.orderId} placed",
-            category_intents=[category] if category else [],
-            commit=False,
-            raise_on_error=True,
-            product_id=item.productId,
-            event_id=f"order-created:{order.orderId}:{item.productId}:{variant}",
-            occurred_at_source="broker_received",
-            context_data={
-                "source": "order_service_event",
-                "routing_key": routing_key,
-                "order_id": order.orderId,
-                "variant_id": item.variantId,
-                "quantity": item.quantity,
-            },
-        )
-    return recorded
 
 
 def order_created_event_id(order_id: int) -> str:
@@ -113,7 +78,7 @@ def order_cancelled_event_id(order_id: int) -> str:
 
 
 def retract_order_purchases(db, order: OrderCancelledEvent) -> int:
-    """Delete the PURCHASE rows ``record_order_created`` wrote for this order.
+    """Delete legacy PURCHASE rows previously written at order creation.
 
     Deleting (rather than flagging) means every PURCHASE reader -- popularity,
     co-purchase, post-purchase profile, CF training, evaluation -- stops
@@ -136,6 +101,16 @@ PROCESSED_EVENT_IDS = PROCESSED_EVENTS._set
 
 def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str:
     """Apply an event and its idempotency marker in one database transaction."""
+    if routing_key in ORDER_ROUTING_KEYS + CATALOG_ROUTING_KEYS and "version" in payload:
+        from app.services.integration_events import apply_event
+        try:
+            with SessionLocal() as db:
+                action = apply_event(db, payload, routing_key)
+                db.commit()
+        except (ValueError, ValidationError) as exc:
+            raise InvalidEventPayload(str(exc)) from exc
+        _invalidate_caches()
+        return action
     is_order = routing_key in ORDER_ROUTING_KEYS
     order_event: OrderCreatedEvent | None = None
     cancel_event: OrderCancelledEvent | None = None
@@ -191,11 +166,11 @@ def process_event_payload(payload: dict[str, Any], routing_key: str = "") -> str
                     )
                     action = "order_already_cancelled"
                 else:
-                    count = record_order_created(db, order_event, routing_key)
+                    count = 0  # Legacy creation is not a delivered purchase.
                     logger.info(
                         "Recorded %d PURCHASE rows for order %s", count, order_event.orderId
                     )
-                    action = "order_purchase_recorded"
+                    action = "order_created_recorded"
             elif cancel_event is not None:
                 count = retract_order_purchases(db, cancel_event)
                 logger.info(
@@ -333,14 +308,14 @@ def _invalidate_caches() -> None:
     logger.debug("Invalidated recommendation & product caches after event.")
 
 
-async def on_message_received(message: AbstractIncomingMessage) -> None:
+async def on_message_received(message: AbstractIncomingMessage, retry_exchange=None) -> None:
     """Process incoming RabbitMQ message with explicit Ack/Nack handling for DLQ routing."""
     try:
         body = message.body.decode("utf-8")
         payload = json.loads(body)
         if not isinstance(payload, dict):
             raise InvalidEventPayload("event payload must be a JSON object")
-        routing_key = message.routing_key or ""
+        routing_key = (message.headers or {}).get("x-original-routing-key") or message.routing_key or ""
 
         await asyncio.to_thread(process_event_payload, payload, routing_key)
         await message.ack()
@@ -350,8 +325,25 @@ async def on_message_received(message: AbstractIncomingMessage) -> None:
         await message.nack(requeue=False)
 
     except Exception as exc:
-        logger.error("Failed to process RabbitMQ event message: %s. Requeuing for retry.", exc)
-        await message.nack(requeue=True)
+        attempts = int((message.headers or {}).get("x-retry-count", 0))
+        if attempts >= 3 or retry_exchange is None:
+            logger.error("Event retry exhausted; sending to DLQ: %s", exc)
+            await message.nack(requeue=False)
+            return
+        await asyncio.sleep(min(2 ** attempts, 8))
+        headers = dict(message.headers or {})
+        headers.update({"x-retry-count": attempts + 1,
+                        "x-original-routing-key": headers.get("x-original-routing-key") or message.routing_key})
+        # Confirm replacement before ACK: a crash can duplicate, but cannot silently lose the event.
+        try:
+            await retry_exchange.publish(aio_pika.Message(body=message.body, headers=headers,
+                message_id=message.message_id, content_type="application/json",
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT), routing_key=RABBITMQ_QUEUE, mandatory=True)
+        except Exception:
+            # The retry copy was not confirmed. Keep the original recoverable.
+            await message.nack(requeue=True)
+            return
+        await message.ack()
 
 
 async def start_event_consumer_loop(retry_interval: int = 5) -> None:
@@ -377,7 +369,12 @@ async def start_event_consumer_loop(retry_interval: int = 5) -> None:
                     durable=True,
                 )
 
-                queue = await channel.declare_queue(RABBITMQ_QUEUE, durable=True)
+                dlx = await channel.declare_exchange("kyro.dlx", type=aio_pika.ExchangeType.DIRECT, durable=True)
+                dlq = await channel.declare_queue(RABBITMQ_QUEUE + ".dlq", durable=True)
+                await dlq.bind(dlx, routing_key=RABBITMQ_QUEUE + ".dlq")
+                queue = await channel.declare_queue(RABBITMQ_QUEUE, durable=True, arguments={
+                    "x-dead-letter-exchange": "kyro.dlx",
+                    "x-dead-letter-routing-key": RABBITMQ_QUEUE + ".dlq"})
 
                 for routing_key in CATALOG_ROUTING_KEYS + CLICKSTREAM_ROUTING_KEYS:
                     await queue.bind(exchange, routing_key=routing_key)
@@ -390,7 +387,8 @@ async def start_event_consumer_loop(retry_interval: int = 5) -> None:
                     await queue.bind(order_exchange, routing_key=routing_key)
 
                 logger.info("✅ AI Service RabbitMQ Consumer listening on queue '%s'", RABBITMQ_QUEUE)
-                await queue.consume(on_message_received)
+                from functools import partial
+                await queue.consume(partial(on_message_received, retry_exchange=channel.default_exchange))
 
                 # Keep connection alive while listening
 

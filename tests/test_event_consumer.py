@@ -158,7 +158,7 @@ class EventConsumerTest(unittest.TestCase):
             process_event_payload({"event_type": "UserProductViewed"}, "user.product.viewed")
 
     @patch("app.services.event_consumer.process_event_payload", side_effect=RuntimeError("db down"))
-    def test_transient_processing_failure_is_requeued(self, _mock_process: MagicMock) -> None:
+    def test_transient_failure_without_retry_publisher_is_dead_lettered(self, _mock_process: MagicMock) -> None:
         message = MagicMock()
         message.body = b'{"event_id":"evt-retry"}'
         message.routing_key = "product.updated"
@@ -170,7 +170,7 @@ class EventConsumerTest(unittest.TestCase):
         asyncio.run(on_message_received(message))
 
         message.ack.assert_not_awaited()
-        message.nack.assert_awaited_once_with(requeue=True)
+        message.nack.assert_awaited_once_with(requeue=False)
 
     def test_invalid_json_is_dead_lettered_without_retry(self) -> None:
         message = MagicMock()
@@ -190,3 +190,38 @@ class EventConsumerTest(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+class BoundedRetryTest(unittest.IsolatedAsyncioTestCase):
+    @patch("app.services.event_consumer.asyncio.sleep", new_callable=AsyncMock)
+    @patch("app.services.event_consumer.process_event_payload", side_effect=RuntimeError("db down"))
+    async def test_retry_copy_is_confirmed_before_ack(self, process, sleep):
+        message = MagicMock()
+        message.body = b'{"event_id":"retry-test"}'
+        message.headers = {"x-retry-count": 1}
+        message.routing_key = "stock.changed"
+        message.message_id = "retry-test"
+        message.ack = AsyncMock()
+        message.nack = AsyncMock()
+        exchange = MagicMock()
+        async def confirmed(*args, **kwargs):
+            message.ack.assert_not_awaited()
+        exchange.publish = AsyncMock(side_effect=confirmed)
+        await on_message_received(message, exchange)
+        copy = exchange.publish.call_args.args[0]
+        self.assertEqual(copy.headers["x-retry-count"], 2)
+        self.assertEqual(copy.headers["x-original-routing-key"], "stock.changed")
+        message.ack.assert_awaited_once()
+        message.nack.assert_not_awaited()
+
+    @patch("app.services.event_consumer.process_event_payload", side_effect=RuntimeError("db down"))
+    async def test_exhausted_retry_goes_to_dlq(self, process):
+        message = MagicMock()
+        message.body = b'{"event_id":"failed-test"}'
+        message.headers = {"x-retry-count": 3}
+        message.routing_key = "stock.changed"
+        message.ack = AsyncMock()
+        message.nack = AsyncMock()
+        exchange = AsyncMock()
+        await on_message_received(message, exchange)
+        exchange.publish.assert_not_awaited()
+        message.nack.assert_awaited_once_with(requeue=False)

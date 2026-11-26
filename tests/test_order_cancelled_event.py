@@ -44,7 +44,7 @@ def _added(db, name):
 
 
 def test_consumer_binds_cancelled_next_to_created():
-    assert ORDER_ROUTING_KEYS == ("order.created", "order.cancelled")
+    assert ORDER_ROUTING_KEYS == ("order.created", "order.cancelled", "order.delivered")
 
 
 @patch("app.services.event_consumer._invalidate_caches")

@@ -71,6 +71,7 @@ def map_dto_to_variants(dto: dict[str, Any]) -> list[CatalogVariantWithNamePropo
                 "price_vnd": row.get("price"),
                 "sale_price_vnd": row.get("salePrice"),
                 "stock": row.get("stock"),
+                "stock_version": row.get("stockVersion", 0),
                 "active": row.get("active"),
                 "technical_specs": row.get("technicalSpecs"),
                 "name_proposal": proposal,

@@ -85,6 +85,7 @@ class CatalogVariantSnapshot(SnapshotModel):
     sale_price_vnd: MoneyVnd
     stock: Annotated[StrictInt, Field(ge=0, le=2**31 - 1)]
     active: StrictBool
+    stock_version: Annotated[StrictInt, Field(ge=0)] = 0
     technical_specs: VariantTechnicalSpecs | None = None
 
     @model_validator(mode="after")

@@ -49,7 +49,7 @@ class AIProduct(Base):
     content_text: Mapped[str | None] = mapped_column(Text)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384))
     # Lineage of `embedding` (model, pinned revision, text policy, content hash).
-    embedding_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    embedding_metadata: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     source: Mapped[str | None] = mapped_column(Text, default="unknown", server_default="unknown")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     available_from: Mapped[datetime] = mapped_column(
@@ -203,3 +203,10 @@ class ChatTurn(Base):
     intent: Mapped[str | None] = mapped_column(Text, nullable=True)
     recommendation_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class IntegrationProjection(Base):
+    __tablename__ = "integration_projections"
+    aggregate_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    state: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

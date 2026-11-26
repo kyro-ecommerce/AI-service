@@ -33,7 +33,7 @@ ORDER_EXCHANGE = os.getenv("ORDER_EXCHANGE", "order-exchange")
 
 RABBITMQ_QUEUE = os.getenv(
     "RABBITMQ_QUEUE",
-    "ai.product.events",
+    "ai.integration.events.v2",
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

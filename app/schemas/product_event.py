@@ -22,7 +22,7 @@ class ProductEvent(BaseModel):
 class RabbitMQProductEventSettings(BaseModel):
     exchange: str = "product.events"
     exchange_type: str = "topic"
-    queue: str = "ai.product.events"
+    queue: str = "ai.integration.events.v2"
     routing_keys: list[str] = Field(
         default_factory=lambda: [
             "product.created",
