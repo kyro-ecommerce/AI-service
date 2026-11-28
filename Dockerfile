@@ -17,6 +17,12 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 # Pre-download the pinned multilingual encoder into the image (no runtime download).
 ARG EMBEDDING_MODEL_NAME=intfloat/multilingual-e5-small
 ARG EMBEDDING_MODEL_REVISION=614241f622f53c4eeff9890bdc4f31cfecc418b3
+ENV EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME} \
+    EMBEDDING_MODEL_REVISION=${EMBEDDING_MODEL_REVISION} \
+    OMP_NUM_THREADS=2 \
+    MKL_NUM_THREADS=2 \
+    TOKENIZERS_PARALLELISM=false \
+    MALLOC_ARENA_MAX=2
 RUN python -c "import sys; from sentence_transformers import SentenceTransformer; SentenceTransformer(sys.argv[1], revision=sys.argv[2], device='cpu')" "$EMBEDDING_MODEL_NAME" "$EMBEDDING_MODEL_REVISION"
 
 # Copy application code

@@ -13,5 +13,9 @@ artifacts/
 *.log
 tests/
 .pytest_cache
+.ruff_cache
+data/
+notebooks/
+docs/
 .vscode
 .idea
